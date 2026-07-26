@@ -69,9 +69,6 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
-        echo "CONFIG_KPROBES=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_HAVE_KPROBES=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KPROBE_EVENTS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
