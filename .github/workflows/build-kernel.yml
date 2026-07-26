@@ -74,7 +74,25 @@ jobs:
         echo "CONFIG_KPROBE_EVENTS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-  
+
+    - name: Patch KernelSU-Next syscall_fn_t (kernel 4.14 fix)
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        FILE="drivers/kernelsu/hook/syscall_hook.h"
+        if [ -f "$FILE" ]; then
+          sed -i '/^extern syscall_fn_t \*ksu_syscall_table;/i \
+        #ifndef _syscall_fn_t_defined\
+        typedef long (*syscall_fn_t)(const struct pt_regs *regs);\
+        #define _syscall_fn_t_defined\
+        #endif
+        ' "$FILE"
+          echo "Patched $FILE"
+        else
+          echo "syscall_hook.h not found at $FILE, cek struktur folder"
+          find . -name "syscall_hook.h"
+        fi
+
     - name: Generate kernel configuration
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
@@ -167,3 +185,4 @@ jobs:
       with:
         name: boot${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
         path: kernel_workspace/boot.img
+        
