@@ -26,26 +26,41 @@ jobs:
       run: |
         cd android-kernel
         FILE="fs/exec.c"
-        
-        sed -i '/^int do_execve(struct filename \*filename,/i\
-#ifdef CONFIG_KSU\
-__attribute__((hot))\
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,\
-\t\t\t\tvoid *argv, void *envp, int *flags);\
-#endif
-' "$FILE"
 
-        sed -i '/struct user_arg_ptr envp = { .ptr.native = __envp };/a\
-#ifdef CONFIG_KSU\
-\tksu_handle_execveat((int *)AT_FDCWD, \&filename, \&argv, \&envp, 0);\
+        cat > /tmp/patch1.txt << 'EOF'
+#ifdef CONFIG_KSU
+__attribute__((hot))
+extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
+				void *argv, void *envp, int *flags);
 #endif
-' "$FILE"
+EOF
+
+        cat > /tmp/patch2.txt << 'EOF'
+#ifdef CONFIG_KSU
+	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
+#endif
+EOF
+
+        awk -v patchfile="/tmp/patch1.txt" '
+          /^int do_execve\(struct filename \*filename,/ {
+            while ((getline line < patchfile) > 0) print line
+            close(patchfile)
+          }
+          { print }
+        ' "$FILE" > /tmp/exec_step1.c
+        mv /tmp/exec_step1.c "$FILE"
+
+        awk -v patchfile="/tmp/patch2.txt" '
+          { print }
+          /struct user_arg_ptr envp = \{ \.ptr\.native = __envp \};/ {
+            while ((getline line < patchfile) > 0) print line
+            close(patchfile)
+          }
+        ' "$FILE" > /tmp/exec_step2.c
+        mv /tmp/exec_step2.c "$FILE"
 
     - name: Show patched fs/exec.c relevant section
       run: |
         cd android-kernel
         echo "=== Hasil grep KSU (SETELAH patch) ==="
         grep -n -B 2 -A 2 "KSU" fs/exec.c
-        echo ""
-        echo "=== Cek sintaks kasar dengan gcc -fsyntax-only (opsional, mungkin gagal karena header kernel) ==="
-        echo "Selesai - lihat hasil grep di atas untuk verifikasi manual"
