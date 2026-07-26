@@ -22,24 +22,24 @@ jobs:
         echo "=== Baris envp (SEBELUM patch) ==="
         grep -n "struct user_arg_ptr envp" fs/exec.c
 
-    - name: Patch fs/exec.c for KernelSU-Next
+    - - name: Patch fs/exec.c for KernelSU-Next
       run: |
         cd android-kernel
         FILE="fs/exec.c"
 
-        cat > /tmp/patch1.txt << 'EOF'
-#ifdef CONFIG_KSU
-__attribute__((hot))
-extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,
-				void *argv, void *envp, int *flags);
-#endif
-EOF
+        {
+          printf '%s\n' '#ifdef CONFIG_KSU'
+          printf '%s\n' '__attribute__((hot))'
+          printf '%s\n' 'extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,'
+          printf '%s\n' '                              void *argv, void *envp, int *flags);'
+          printf '%s\n' '#endif'
+        } > /tmp/patch1.txt
 
-        cat > /tmp/patch2.txt << 'EOF'
-#ifdef CONFIG_KSU
-	ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);
-#endif
-EOF
+        {
+          printf '%s\n' '#ifdef CONFIG_KSU'
+          printf '%s\n' '        ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);'
+          printf '%s\n' '#endif'
+        } > /tmp/patch2.txt
 
         awk -v patchfile="/tmp/patch1.txt" '
           /^int do_execve\(struct filename \*filename,/ {
@@ -58,9 +58,3 @@ EOF
           }
         ' "$FILE" > /tmp/exec_step2.c
         mv /tmp/exec_step2.c "$FILE"
-
-    - name: Show patched fs/exec.c relevant section
-      run: |
-        cd android-kernel
-        echo "=== Hasil grep KSU (SETELAH patch) ==="
-        grep -n -B 2 -A 2 "KSU" fs/exec.c
