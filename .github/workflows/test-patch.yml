@@ -1,1 +1,51 @@
+name: Test Patch exec.c
 
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Patch fs/exec.c
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Clone kernel source (shallow)
+      run: |
+        git clone https://github.com/LineageOS/android_kernel_xiaomi_mt6768.git -b lineage-20 android-kernel --depth=1
+
+    - name: Show original fs/exec.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Baris sekitar do_execve (SEBELUM patch) ==="
+        grep -n -A 5 -B 5 "^int do_execve" fs/exec.c
+        echo ""
+        echo "=== Baris envp (SEBELUM patch) ==="
+        grep -n "struct user_arg_ptr envp" fs/exec.c
+
+    - name: Patch fs/exec.c for KernelSU-Next
+      run: |
+        cd android-kernel
+        FILE="fs/exec.c"
+        
+        sed -i '/^int do_execve(struct filename \*filename,/i\
+#ifdef CONFIG_KSU\
+__attribute__((hot))\
+extern int ksu_handle_execveat(int *fd, struct filename **filename_ptr,\
+\t\t\t\tvoid *argv, void *envp, int *flags);\
+#endif
+' "$FILE"
+
+        sed -i '/struct user_arg_ptr envp = { .ptr.native = __envp };/a\
+#ifdef CONFIG_KSU\
+\tksu_handle_execveat((int *)AT_FDCWD, \&filename, \&argv, \&envp, 0);\
+#endif
+' "$FILE"
+
+    - name: Show patched fs/exec.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Hasil grep KSU (SETELAH patch) ==="
+        grep -n -B 2 -A 2 "KSU" fs/exec.c
+        echo ""
+        echo "=== Cek sintaks kasar dengan gcc -fsyntax-only (opsional, mungkin gagal karena header kernel) ==="
+        echo "Selesai - lihat hasil grep di atas untuk verifikasi manual"
