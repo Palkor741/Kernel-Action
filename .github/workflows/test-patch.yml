@@ -22,7 +22,7 @@ jobs:
         echo "=== Baris envp (SEBELUM patch) ==="
         grep -n "struct user_arg_ptr envp" fs/exec.c
 
-    - - name: Patch fs/exec.c for KernelSU-Next
+    - name: Patch fs/exec.c for KernelSU-Next
       run: |
         cd android-kernel
         FILE="fs/exec.c"
