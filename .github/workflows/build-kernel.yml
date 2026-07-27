@@ -79,6 +79,27 @@ jobs:
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
+    - name: Patch Manual Hooks for KernelSU-Next
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        
+        # 1. Patch fs/exec.c
+        sed -i '/int do_execve(/i #ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif' fs/exec.c
+        sed -i '/struct user_arg_ptr envp = { .ptr.native = __envp };/a #ifdef CONFIG_KSU\n        ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);\n#endif' fs/exec.c
+
+        # 2. Patch fs/open.c
+        sed -i '/SYSCALL_DEFINE3(faccessat,/i #ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif' fs/open.c
+        sed -i '/if (mode & ~S_IRWXO)/i #ifdef CONFIG_KSU\n        ksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif' fs/open.c
+
+        # 3. Patch fs/read_write.c
+        sed -i '/SYSCALL_DEFINE3(read,/i #ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr, size_t *count_ptr);\n#endif' fs/read_write.c
+        sed -i '/if (f.file) {/i #ifdef CONFIG_KSU\n        if (unlikely(ksu_vfs_read_hook))\n                ksu_handle_sys_read(fd, &buf, &count);\n#endif' fs/read_write.c
+
+        # 4. Patch fs/stat.c
+        sed -i '/SYSCALL_DEFINE4(newfstatat,/i #ifdef CONFIG_KSU\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif' fs/stat.c
+        sed -i '/error = vfs_fstatat(dfd, filename, &stat, flag);/i #ifdef CONFIG_KSU\n        ksu_handle_stat(&dfd, &filename, &flag);\n#endif' fs/stat.c
+
     - name: Generate kernel configuration
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
