@@ -1,4 +1,4 @@
-koname: Test Patch exec.c
+name: Test Patch exec.c
 
 on:
   workflow_dispatch:
