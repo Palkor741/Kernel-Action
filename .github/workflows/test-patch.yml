@@ -264,4 +264,56 @@ jobs:
       run: |
         cd android-kernel
         echo "=== Cari SYSCALL_DEFINE4 reboot ==="
-        grep -n -B 5 -A 15 "^SYSCALL_DEFINE4(reboot," kernel/reboot.c    
+        grep -n -B 5 -A 15 "^SYSCALL_DEFINE4(reboot," kernel/reboot.c   
+
+    - name: Patch kernel/reboot.c for KernelSU-Next
+      run: |
+        cd android-kernel
+        FILE="kernel/reboot.c"
+
+        {
+          printf '%s\n' '#ifdef CONFIG_KSU'
+          printf '%s\n' 'extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);'
+          printf '%s\n' '#endif'
+        } > /tmp/patch_reboot1.txt
+
+        {
+          printf '%s\n' '#ifdef CONFIG_KSU'
+          printf '%s\n' '        ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);'
+          printf '%s\n' '#endif'
+        } > /tmp/patch_reboot2.txt
+
+        awk -v patchfile="/tmp/patch_reboot1.txt" '
+          /^SYSCALL_DEFINE4\(reboot,/ {
+            while ((getline line < patchfile) > 0) print line
+            close(patchfile)
+          }
+          { print }
+        ' "$FILE" > /tmp/reboot_step1.c
+        mv /tmp/reboot_step1.c "$FILE"
+
+        awk -v patchfile="/tmp/patch_reboot2.txt" '
+          BEGIN { target_zone = 0; done = 0 }
+          /^SYSCALL_DEFINE4\(reboot,/ { target_zone = 1 }
+          { lines[NR] = $0; zone[NR] = target_zone }
+          END {
+            for (i = 1; i <= NR; i++) {
+              print lines[i]
+              if (zone[i] == 1 && done == 0 &&
+                  lines[i] ~ /int ret = 0;/ &&
+                  lines[i+1] ~ /^$/ &&
+                  lines[i+2] ~ /We only trust the superuser/) {
+                while ((getline line < patchfile) > 0) print line
+                close(patchfile)
+                done = 1
+              }
+            }
+          }
+        ' "$FILE" > /tmp/reboot_step2.c
+        mv /tmp/reboot_step2.c "$FILE"
+
+    - name: Show patched kernel/reboot.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Hasil grep KSU di reboot.c (SETELAH patch) ==="
+        grep -n -B 3 -A 5 "KSU" kernel/reboot.c   
