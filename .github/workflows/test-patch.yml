@@ -1,1 +1,81 @@
+name: Test KSU Patch
 
+on:
+  workflow_dispatch:
+
+jobs:
+  test-patch:
+    name: Test Patching KSU Hooks
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Configuration
+      run: |
+        echo "KERNEL_SOURCE=$(cat config.env | grep "KERNEL_SOURCE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KERNEL_SOURCE_BRANCH=$(cat config.env | grep "KERNEL_SOURCE_BRANCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+
+    - name: Download kernel source
+      run: |
+        git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
+
+    - name: Setup KernelSU-Next source
+      run: |
+        cd android-kernel
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
+    - name: Run Python Patch Test
+      run: |
+        cd android-kernel
+        python3 - << 'EOF'
+        import re, sys
+
+        def patch_file(file_path, header_code, call_code, header_regex, call_regex):
+            with open(file_path, 'r') as f:
+                content = f.read()
+
+            orig = content
+
+            if "ksu_handle_" not in content and "CONFIG_KSU" not in content:
+                content = re.sub(header_regex, r'\n' + header_code + r'\n\1', content, count=1)
+
+            content = re.sub(call_regex, r'\1\n' + call_code, content, count=1)
+
+            if content == orig:
+                print(f"[ERROR] Gagal menempelkan patch di: {file_path}")
+                sys.exit(1)
+
+            with open(file_path, 'w') as f:
+                f.write(content)
+            print(f"[SUCCESS] Patch nempel sempurna di: {file_path}")
+
+        # 1. Patch fs/exec.c
+        exec_header = "#ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif"
+        exec_call = "#ifdef CONFIG_KSU\n\tksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);\n#endif"
+        patch_file("fs/exec.c", exec_header, exec_call, r'(int\s+do_execve|do_execveat_common)', r'(struct\s+user_arg_ptr\s+envp\s*=[\s\S]*?;)')
+
+        # 2. Patch fs/open.c
+        open_header = "#ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif"
+        open_call = "#ifdef CONFIG_KSU\n\tksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif"
+        patch_file("fs/open.c", open_header, open_call, r'(SYSCALL_DEFINE3\(faccessat)', r'(if\s*\(mode\s*&\s*~S_IRWXO\))')
+
+        # 3. Patch fs/read_write.c
+        rw_header = "#ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr, size_t *count_ptr);\n#endif"
+        rw_call = "#ifdef CONFIG_KSU\n\tif (unlikely(ksu_vfs_read_hook))\n\t\tksu_handle_sys_read(fd, &buf, &count);\n#endif"
+        patch_file("fs/read_write.c", rw_header, rw_call, r'(SYSCALL_DEFINE3\(read,)', r'(if\s*\(f\.file\))')
+
+        # 4. Patch fs/stat.c
+        stat_header = "#ifdef CONFIG_KSU\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif"
+        stat_call = "#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flag);\n#endif"
+        patch_file("fs/stat.c", stat_header, stat_call, r'(SYSCALL_DEFINE4\(newfstatat|SYSCALL_DEFINE4\(fstatat)', r'(error\s*=\s*vfs_fstatat)')
+
+        print("\n>>> SEMUA FILE VFS BERHASIL DIPATCH TAMPA ERROR! <<<")
+        EOF
+
+    - name: Show Git Diff Output
+      run: |
+        cd android-kernel
+        echo "=== HASIL PERUBAHAN KODE DI FS/ ==="
+        git diff fs/
+        
