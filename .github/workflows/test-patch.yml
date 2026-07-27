@@ -426,7 +426,7 @@ jobs:
     - name: Patch nvt_ts_resume in nt36xxx.c
       run: |
         cd android-kernel
-        python3 -c '
+        python3 - << 'EOF'
         import re
 
         file_path = "drivers/input/touchscreen/NT36672C/nt36xxx.c"
@@ -435,7 +435,6 @@ jobs:
 
         old_pattern = r"static int32_t nvt_ts_resume\(struct device \*dev\)\n\{[\s\S]*?return 0;\n\}"
 
-        # Huruf r di depan triple quote mencegah \n berubah jadi enter
         new_block = r"""static int32_t nvt_ts_resume(struct device *dev)
         {
         	if (bTouchIsAwake) {
@@ -478,7 +477,9 @@ jobs:
         with open(file_path, "w") as f:
             f.write(updated_code)
 
-        print("Patch nvt_ts_resume rapi tanpa enter terpotong!")
+        print("Patch nvt_ts_resume berhasil dipasang!")
+        EOF
+        
 
     - name: Show patched nvt_ts_resume section
       run: |
