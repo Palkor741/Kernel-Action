@@ -77,7 +77,11 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        # Pastikan kprobe TIDAK aktif biar Kbuild gak nyasar ke jalur kprobe
+        sed -i '/CONFIG_KPROBES=/d;/CONFIG_HAVE_KPROBES=/d;/CONFIG_KPROBE_EVENTS=/d;/CONFIG_KPROBES_QGKI=/d' arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KPROBES=n" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
     # Ganti patch sed manual (rawan salah tempel & gak lengkap) dengan
     # Coccinelle scope-minimized manual hooks (basis kerjaan backslashxx),
