@@ -133,3 +133,9 @@ jobs:
         cd android-kernel
         echo "=== Hasil grep KSU di open.c (SETELAH patch) ==="
         grep -n -B 3 -A 3 "KSU" fs/open.c   
+
+    - name: Show original fs/read_write.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Cari SYSCALL_DEFINE3 read ==="
+        grep -n -B 5 -A 10 "^SYSCALL_DEFINE3(read," fs/read_write.c   
