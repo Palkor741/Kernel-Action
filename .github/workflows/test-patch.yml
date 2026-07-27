@@ -472,13 +472,15 @@ jobs:
         	return 0;
         }"""
 
-        updated_code = re.sub(old_pattern, new_block, code, count=1)
+        # Menggunakan lambda m: new_block agar re.sub tidak mengubah \n menjadi enter
+        updated_code = re.sub(old_pattern, lambda m: new_block, code, count=1)
 
         with open(file_path, "w") as f:
             f.write(updated_code)
 
-        print("Patch nvt_ts_resume berhasil dipasang!")
+        print("Patch nvt_ts_resume berhasil dipasang dengan rapi!")
         EOF
+        
         
 
     - name: Show patched nvt_ts_resume section
