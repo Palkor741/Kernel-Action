@@ -479,5 +479,12 @@ jobs:
             f.write(updated_code)
 
         print("Patch nvt_ts_resume rapi tanpa enter terpotong!")
-        '
+
+    - name: Show patched nvt_ts_resume section
+      run: |
+        cd android-kernel
+        echo "=== Hasil nvt_ts_resume SETELAH Patch ==="
+        grep -n -A 35 "static int32_t nvt_ts_resume" drivers/input/touchscreen/NT36672C/nt36xxx.c
+        
+    
         
