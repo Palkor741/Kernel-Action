@@ -423,7 +423,7 @@ jobs:
         echo "=== 4. LIST FILE DALAM FOLDER TOUCH DRIVER ==="
         ls -la drivers/input/touchscreen/NT36672C/
 
-        - name: Disable ESD Check and Fix Touch Freeze
+    - name: Disable ESD Check and Fix Touch Freeze
       run: |
         python3 - << 'EOF'
         import os, re, glob
