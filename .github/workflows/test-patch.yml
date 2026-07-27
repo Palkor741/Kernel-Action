@@ -425,17 +425,24 @@ jobs:
 
     - name: Patch nvt_ts_resume in nt36xxx.c
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         python3 - << 'EOF'
-        import re
+        import os, re, glob
 
-        file_path = "drivers/input/touchscreen/NT36672C/nt36xxx.c"
+        # Cari lokasi nt36xxx.c secara otomatis di seluruh folder workspace
+        matches = glob.glob("**/drivers/input/touchscreen/NT36672C/nt36xxx.c", recursive=True)
+        if matches:
+            file_path = matches[0]
+            print(f"File ditemukan di: {file_path}")
+        else:
+            print("Error: File nt36xxx.c tidak ditemukan!")
+            exit(1)
+
         with open(file_path, "r") as f:
             code = f.read()
 
         old_pattern = r"static int32_t nvt_ts_resume\(struct device \*dev\)\n\{[\s\S]*?return 0;\n\}"
 
-        # Pulsa Reset Hardware Lengkap (0 -> Delay -> 1 -> Delay) untuk Bangun dari Deep Sleep
+        # Hard Reset Pulse (0 -> Delay 10ms -> 1 -> Delay 20ms)
         new_block = r"""static int32_t nvt_ts_resume(struct device *dev)
         {
         	mutex_lock(&ts->lock);
@@ -477,8 +484,9 @@ jobs:
         with open(file_path, "w") as f:
             f.write(updated_code)
 
-        print("Patch nvt_ts_resume (Hard Reset Pulse for Deep Sleep) berhasil dipasang!")
+        print("Patch nvt_ts_resume (Hard Reset Pulse) berhasil dipasang!")
         EOF
+        
         
         
         
