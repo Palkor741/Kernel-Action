@@ -1,4 +1,4 @@
-name: Test Patch exec.c
+koname: Test Patch exec.c
 
 on:
   workflow_dispatch:
@@ -171,17 +171,23 @@ jobs:
         mv /tmp/rw_step1.c "$FILE"
 
         awk -v patchfile="/tmp/patch_rw2.txt" '
+          BEGIN { target_zone = 0; done = 0 }
+          /^SYSCALL_DEFINE3\(read,/ { target_zone = 1 }
           {
             lines[NR] = $0
+            zone[NR] = target_zone
           }
+          /^\}/ { if (target_zone == 1 && done == 1) target_zone = 0 }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
-              if (lines[i] ~ /ssize_t ret = -EBADF;/ &&
+              if (zone[i] == 1 && done == 0 &&
+                  lines[i] ~ /ssize_t ret = -EBADF;/ &&
                   lines[i+1] ~ /^$/ &&
                   lines[i+2] ~ /if \(f\.file\) \{/) {
                 while ((getline line < patchfile) > 0) print line
                 close(patchfile)
+                done = 1
               }
             }
           }
@@ -192,4 +198,4 @@ jobs:
       run: |
         cd android-kernel
         echo "=== Hasil grep KSU di read_write.c (SETELAH patch) ==="
-        grep -n -B 3 -A 5 "KSU" fs/read_write.c   
+        grep -n -B 3 -A 5 "KSU" fs/read_write.c
