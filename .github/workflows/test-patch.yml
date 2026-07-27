@@ -2,6 +2,7 @@ name: Test KSU Patch
 
 on:
   workflow_dispatch:
+  push:
 
 jobs:
   test-patch:
@@ -70,7 +71,7 @@ jobs:
         stat_call = "#ifdef CONFIG_KSU\n\tksu_handle_stat(&dfd, &filename, &flag);\n#endif"
         patch_file("fs/stat.c", stat_header, stat_call, r'(SYSCALL_DEFINE4\(newfstatat|SYSCALL_DEFINE4\(fstatat)', r'(error\s*=\s*vfs_fstatat)')
 
-        print("\n>>> SEMUA FILE VFS BERHASIL DIPATCH TAMPA ERROR! <<<")
+        print("\n>>> SEMUA FILE VFS BERHASIL DIPATCH TANPA ERROR! <<<")
         EOF
 
     - name: Show Git Diff Output
