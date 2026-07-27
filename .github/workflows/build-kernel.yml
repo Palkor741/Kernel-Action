@@ -63,6 +63,12 @@ jobs:
             echo "Source boot image is empty"
         fi
 
+    - name: Set custom kernel name
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        sed -i '/CONFIG_LOCALVERSION=/d' arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo 'CONFIG_LOCALVERSION="-Valcore"' >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+
     - name: Setup KernelSU-Next source
       if: env.USE_KERNELSU == 'true'
       run: |
@@ -317,6 +323,78 @@ jobs:
         ' "$FILE" > /tmp/reboot_step2.c
         mv /tmp/reboot_step2.c "$FILE"
 
+    - name: Patch nt36xxx.c for MediaTek panel touch handle
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        FILE="drivers/input/touchscreen/NT36672C/nt36xxx.c"
+
+        {
+          printf '%s\n' '#ifdef CONFIG_DRM_MEDIATEK'
+          printf '%s\n' 'static int nvt_tp_power_on_reinit(void)'
+          printf '%s\n' '{'
+          printf '%s\n' '        int32_t ret;'
+          printf '%s\n' ''
+          printf '%s\n' '        pr_info("%s is called\n", __func__);'
+          printf '%s\n' ''
+          printf '%s\n' '        ret = nvt_ts_suspend(&ts->client->dev);'
+          printf '%s\n' '        if (ret) {'
+          printf '%s\n' '                pr_info("%s  is called suspend %d\n", __func__, ret);'
+          printf '%s\n' '                return ret;'
+          printf '%s\n' '        }'
+          printf '%s\n' ''
+          printf '%s\n' '        ret = nvt_ts_resume(&ts->client->dev);'
+          printf '%s\n' '        if (ret)'
+          printf '%s\n' '                pr_info("%s  is called resume %d\n", __func__, ret);'
+          printf '%s\n' ''
+          printf '%s\n' '        return ret;'
+          printf '%s\n' '}'
+          printf '%s\n' '#endif'
+        } > /tmp/patch_touch_func.txt
+
+        {
+          printf '%s\n' '#ifdef CONFIG_DRM_MEDIATEK'
+          printf '%s\n' '        pr_info("%s, disp notifier register func!\n", __func__);'
+          printf '%s\n' '        if (mtk_panel_tch_handle_init()) {'
+          printf '%s\n' '                void **retval = mtk_panel_tch_handle_init();'
+          printf '%s\n' '                *retval = (void *)nvt_tp_power_on_reinit;'
+          printf '%s\n' '        }'
+          printf '%s\n' '#endif'
+        } > /tmp/patch_touch_reg.txt
+
+        awk -v patchfile="/tmp/patch_touch_func.txt" '
+          /^static int32_t nvt_ts_probe\(struct spi_device \*client\)/ {
+            while ((getline line < patchfile) > 0) print line
+            print ""
+          }
+          { print }
+        ' "$FILE" > /tmp/touch_step1.c
+        mv /tmp/touch_step1.c "$FILE"
+
+        awk -v patchfile="/tmp/patch_touch_reg.txt" '
+          BEGIN { done = 0 }
+          {
+            lines[NR] = $0
+          }
+          END {
+            for (i = 1; i <= NR; i++) {
+              print lines[i]
+              if (done == 0 &&
+                  lines[i] ~ /bTouchIsAwake = 1;/ &&
+                  lines[i+1] ~ /NVT_LOG\("end\\n"\);/ &&
+                  lines[i+2] ~ /^$/ &&
+                  lines[i+3] ~ /nvt_irq_enable\(true\);/) {
+                print lines[i+1]
+                print lines[i+2]
+                while ((getline line < patchfile) > 0) print line
+                close(patchfile)
+                done = 1
+                i += 2
+              }
+            }
+          }
+        ' "$FILE" > /tmp/touch_step2.c
+        mv /tmp/touch_step2.c "$FILE"
+
     - name: Generate kernel configuration
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
@@ -362,6 +440,7 @@ jobs:
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
         sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
         sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' AnyKernel3/anykernel.sh
+        sed -i 's/kernel.string=ExampleKernel by osm0sis @ xda-developers/kernel.string=Valcore Kernel by Palkor741/g' AnyKernel3/anykernel.sh
         if [ ${{ env.CHECK_FILE_IS_OK }} = true ]; then
             cp android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/${{ env.KERNEL_FILE }} AnyKernel3/
         elif [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
