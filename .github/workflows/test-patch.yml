@@ -75,3 +75,9 @@ jobs:
         cd android-kernel
         echo "=== Hasil grep KSU (SETELAH patch) ==="
         grep -n -B 3 -A 3 "KSU" fs/exec.c
+
+    - name: Show original fs/open.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Cari SYSCALL_DEFINE3 faccessat ==="
+        grep -n -B 3 -A 15 "SYSCALL_DEFINE3(faccessat" fs/open.c    
