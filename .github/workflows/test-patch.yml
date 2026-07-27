@@ -423,69 +423,39 @@ jobs:
         echo "=== 4. LIST FILE DALAM FOLDER TOUCH DRIVER ==="
         ls -la drivers/input/touchscreen/NT36672C/
 
-    - name: Patch nvt_ts_resume in nt36xxx.c
+        - name: Disable ESD Check and Fix Touch Freeze
       run: |
         python3 - << 'EOF'
         import os, re, glob
 
-        # Cari lokasi nt36xxx.c secara otomatis di seluruh folder workspace
-        matches = glob.glob("**/drivers/input/touchscreen/NT36672C/nt36xxx.c", recursive=True)
-        if matches:
-            file_path = matches[0]
-            print(f"File ditemukan di: {file_path}")
-        else:
-            print("Error: File nt36xxx.c tidak ditemukan!")
-            exit(1)
+        # 1. Cari file nt36xxx.h untuk matikan NVT_TOUCH_ESD_PROTECT
+        header_matches = glob.glob("**/drivers/input/touchscreen/NT36672C/nt36xxx.h", recursive=True)
+        if header_matches:
+            h_file = header_matches[0]
+            with open(h_file, "r") as f:
+                h_code = f.read()
+            # Ubah NVT_TOUCH_ESD_PROTECT dari 1 jadi 0
+            h_code_updated = re.sub(r'#define\s+NVT_TOUCH_ESD_PROTECT\s+1', '#define NVT_TOUCH_ESD_PROTECT 0', h_code)
+            with open(h_file, "w") as f:
+                f.write(h_code_updated)
+            print("ESD Protection berhasil di-DISABLE di nt36xxx.h!")
 
-        with open(file_path, "r") as f:
-            code = f.read()
+        # 2. Patch nt36xxx.c untuk memastikan resume stabil
+        c_matches = glob.glob("**/drivers/input/touchscreen/NT36672C/nt36xxx.c", recursive=True)
+        if c_matches:
+            c_file = c_matches[0]
+            with open(c_file, "r") as f:
+                c_code = f.read()
 
-        old_pattern = r"static int32_t nvt_ts_resume\(struct device \*dev\)\n\{[\s\S]*?return 0;\n\}"
+            # Matikan pemanggilan ESD work di dalam c file secara eksplisit jika ada
+            c_code_updated = re.sub(r'#define\s+NVT_TOUCH_ESD_PROTECT\s+1', '#define NVT_TOUCH_ESD_PROTECT 0', c_code)
 
-        # Hard Reset Pulse (0 -> Delay 10ms -> 1 -> Delay 20ms)
-        new_block = r"""static int32_t nvt_ts_resume(struct device *dev)
-        {
-        	mutex_lock(&ts->lock);
+            with open(c_file, "w") as f:
+                f.write(c_code_updated)
+            print("Eksplisit ESD Disable diterapkan di nt36xxx.c!")
 
-        	NVT_LOG("start\n");
-
-        #if NVT_TOUCH_SUPPORT_HW_RST
-        	gpio_set_value(ts->reset_gpio, 0);
-        	msleep(10);
-        	gpio_set_value(ts->reset_gpio, 1);
-        	msleep(20);
-        #endif
-
-        #if WAKEUP_GESTURE
-        	disable_irq_wake(ts->client->irq);
-        #endif
-
-        	nvt_irq_enable(true);
-
-        #if NVT_TOUCH_ESD_PROTECT
-        	cancel_delayed_work_sync(&nvt_esd_check_work);
-        	nvt_esd_check_enable(false);
-        	irq_timer = jiffies;
-        	queue_delayed_work(nvt_esd_check_wq, &nvt_esd_check_work,
-        			   msecs_to_jiffies(NVT_TOUCH_ESD_CHECK_PERIOD));
-        #endif				/* #if NVT_TOUCH_ESD_PROTECT */
-
-        	bTouchIsAwake = 1;
-
-        	mutex_unlock(&ts->lock);
-
-        	NVT_LOG("end\n");
-
-        	return 0;
-        }"""
-
-        updated_code = re.sub(old_pattern, lambda m: new_block, code, count=1)
-
-        with open(file_path, "w") as f:
-            f.write(updated_code)
-
-        print("Patch nvt_ts_resume (Hard Reset Pulse) berhasil dipasang!")
         EOF
+        
         
         
         
