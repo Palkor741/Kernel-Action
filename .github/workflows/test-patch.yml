@@ -51,10 +51,27 @@ jobs:
         mv /tmp/exec_step1.c "$FILE"
 
         awk -v patchfile="/tmp/patch2.txt" '
-          { print }
-          /struct user_arg_ptr envp = \{ \.ptr\.native = __envp \};/ {
-            while ((getline line < patchfile) > 0) print line
-            close(patchfile)
+          {
+            lines[NR] = $0
+          }
+          END {
+            for (i = 1; i <= NR; i++) {
+              print lines[i]
+              if (lines[i] ~ /struct user_arg_ptr argv = \{ \.ptr\.native = __argv \};/ &&
+                  lines[i+1] ~ /struct user_arg_ptr envp = \{ \.ptr\.native = __envp \};/ &&
+                  lines[i+2] ~ /return do_execveat_common/) {
+                print lines[i+1]
+                while ((getline line < patchfile) > 0) print line
+                close(patchfile)
+                i++
+              }
+            }
           }
         ' "$FILE" > /tmp/exec_step2.c
         mv /tmp/exec_step2.c "$FILE"
+
+    - name: Show patched fs/exec.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Hasil grep KSU (SETELAH patch) ==="
+        grep -n -B 3 -A 3 "KSU" fs/exec.c
