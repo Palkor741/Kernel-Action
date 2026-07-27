@@ -404,4 +404,22 @@ jobs:
       run: |
         cd android-kernel
         echo "=== Hasil grep MEDIATEK di nt36xxx.c (SETELAH patch) ==="
-        grep -n -B 3 -A 10 "CONFIG_DRM_MEDIATEK" drivers/input/touchscreen/NT36672C/nt36xxx.c   
+        grep -n -B 3 -A 10 "CONFIG_DRM_MEDIATEK" drivers/input/touchscreen/NT36672C/nt36xxx.c 
+
+    - name: Inspect Resume, IRQ, and ESD in nt36xxx.c
+      run: |
+        cd android-kernel
+        FILE="drivers/input/touchscreen/NT36672C/nt36xxx.c"
+        
+        echo "=== 1. FUNGSI NVT_TS_RESUME ==="
+        grep -n -A 30 "static int32_t nvt_ts_resume" $FILE || grep -n -A 30 "nvt_ts_resume" $FILE
+
+        echo "=== 2. FUNGSI NVT_TS_SUSPEND ==="
+        grep -n -A 30 "static int32_t nvt_ts_suspend" $FILE || grep -n -A 30 "nvt_ts_suspend" $FILE
+
+        echo "=== 3. PENANGANAN ESD WORKQUEUE ==="
+        grep -n -B 5 -A 25 "esd" $FILE || grep -n -B 5 -A 25 "ESD" $FILE
+
+        echo "=== 4. LIST FILE DALAM FOLDER TOUCH DRIVER ==="
+        ls -la drivers/input/touchscreen/NT36672C/
+        
