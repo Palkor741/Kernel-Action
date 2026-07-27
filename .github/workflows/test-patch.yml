@@ -317,3 +317,8 @@ jobs:
         cd android-kernel
         echo "=== Hasil grep KSU di reboot.c (SETELAH patch) ==="
         grep -n -B 3 -A 5 "KSU" kernel/reboot.c   
+
+    - name: Show original nt36xxx.c probe function end
+      run: |
+        cd android-kernel
+        grep -n -B 2 -A 15 'bTouchIsAwake = 1;' drivers/input/touchscreen/NT36672C/nt36xxx.c   
