@@ -7,7 +7,7 @@ jobs:
   build:
     name: Build Kernel by ${{ github.actor }}
     runs-on: ubuntu-22.04
-    
+
     steps:
     - uses: actions/checkout@v3
 
@@ -31,7 +31,7 @@ jobs:
         echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
         echo "DEVICE=$(echo ${{ env.KERNEL_DEFCONFIG }} | sed 's!vendor/!!;s/_defconfig//;s/_user//;s/-perf//')" >> $GITHUB_ENV
         sudo apt-get update
-        sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
+        sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3 coccinelle
         mkdir -p $GITHUB_WORKSPACE/kernel_workspace
 
     - name: Download Clang Toolchain
@@ -79,26 +79,15 @@ jobs:
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
-    - name: Patch Manual Hooks for KernelSU-Next
+    # Ganti patch sed manual (rawan salah tempel & gak lengkap) dengan
+    # Coccinelle scope-minimized manual hooks (basis kerjaan backslashxx),
+    # dijalankan di source kernel yang masih bersih (fresh clone --depth=1).
+    - name: Patch Manual Hooks for KernelSU-Next (Coccinelle)
       if: env.USE_KERNELSU == 'true'
       run: |
-        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        
-        # 1. Patch fs/exec.c
-        sed -i '/int do_execve(/i #ifdef CONFIG_KSU\nextern int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags);\n#endif' fs/exec.c
-        sed -i '/struct user_arg_ptr envp = { .ptr.native = __envp };/a #ifdef CONFIG_KSU\n        ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);\n#endif' fs/exec.c
-
-        # 2. Patch fs/open.c
-        sed -i '/SYSCALL_DEFINE3(faccessat,/i #ifdef CONFIG_KSU\nextern int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags);\n#endif' fs/open.c
-        sed -i '/if (mode & ~S_IRWXO)/i #ifdef CONFIG_KSU\n        ksu_handle_faccessat(&dfd, &filename, &mode, NULL);\n#endif' fs/open.c
-
-        # 3. Patch fs/read_write.c
-        sed -i '/SYSCALL_DEFINE3(read,/i #ifdef CONFIG_KSU\nextern bool ksu_vfs_read_hook __read_mostly;\nextern int ksu_handle_sys_read(unsigned int fd, char __user **buf_ptr, size_t *count_ptr);\n#endif' fs/read_write.c
-        sed -i '/if (f.file) {/i #ifdef CONFIG_KSU\n        if (unlikely(ksu_vfs_read_hook))\n                ksu_handle_sys_read(fd, &buf, &count);\n#endif' fs/read_write.c
-
-        # 4. Patch fs/stat.c
-        sed -i '/SYSCALL_DEFINE4(newfstatat,/i #ifdef CONFIG_KSU\nextern int ksu_handle_stat(int *dfd, const char __user **filename_user, int *flags);\n#endif' fs/stat.c
-        sed -i '/error = vfs_fstatat(dfd, filename, &stat, flag);/i #ifdef CONFIG_KSU\n        ksu_handle_stat(&dfd, &filename, &flag);\n#endif' fs/stat.c
+        git clone --depth=1 https://github.com/devnoname120/kernelsu-coccinelle $GITHUB_WORKSPACE/kernelsu-coccinelle
+        cd $GITHUB_WORKSPACE/kernelsu-coccinelle/scope-minimized-hooks
+        ./apply.sh $GITHUB_WORKSPACE/kernel_workspace/android-kernel
 
     - name: Generate kernel configuration
       run: |
@@ -165,7 +154,7 @@ jobs:
         else
             echo "Boot image is empty"
         fi
-    
+
     - name: Upload ${{ env.KERNEL_FILE }}
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
