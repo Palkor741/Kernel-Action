@@ -322,3 +322,8 @@ jobs:
       run: |
         cd android-kernel
         grep -n -B 2 -A 15 'bTouchIsAwake = 1;' drivers/input/touchscreen/NT36672C/nt36xxx.c   
+
+    - name: Show nvt_ts_probe function signature
+      run: |
+        cd android-kernel
+        grep -n "nvt_ts_probe" drivers/input/touchscreen/NT36672C/nt36xxx.c   
