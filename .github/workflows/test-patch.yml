@@ -259,3 +259,9 @@ jobs:
         cd android-kernel
         echo "=== Hasil grep KSU di stat.c (SETELAH patch) ==="
         grep -n -B 3 -A 5 "KSU" fs/stat.c    
+
+    - name: Show original kernel/reboot.c relevant section
+      run: |
+        cd android-kernel
+        echo "=== Cari SYSCALL_DEFINE4 reboot ==="
+        grep -n -B 5 -A 15 "^SYSCALL_DEFINE4(reboot," kernel/reboot.c    
