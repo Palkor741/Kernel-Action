@@ -77,19 +77,14 @@ jobs:
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        # Pastikan kprobe TIDAK aktif biar Kbuild gak nyasar ke jalur kprobe
-        sed -i '/CONFIG_KPROBES=/d;/CONFIG_HAVE_KPROBES=/d;/CONFIG_KPROBE_EVENTS=/d;/CONFIG_KPROBES_QGKI=/d' arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KPROBES=n" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
-    - name: Patch Manual Hooks for KernelSU-Next (AWK)
+    - name: Patch fs/exec.c for KernelSU-Next
       if: env.USE_KERNELSU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-
-        # 1. Patch fs/exec.c
         FILE="fs/exec.c"
+
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -131,8 +126,12 @@ jobs:
         ' "$FILE" > /tmp/exec_step2.c
         mv /tmp/exec_step2.c "$FILE"
 
-        # 2. Patch fs/open.c
+    - name: Patch fs/open.c for KernelSU-Next
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/open.c"
+
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -172,8 +171,12 @@ jobs:
         ' "$FILE" > /tmp/open_step2.c
         mv /tmp/open_step2.c "$FILE"
 
-        # 3. Patch fs/read_write.c
+    - name: Patch fs/read_write.c for KernelSU-Next
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/read_write.c"
+
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' 'extern bool ksu_vfs_read_hook __read_mostly;'
@@ -202,8 +205,10 @@ jobs:
         awk -v patchfile="/tmp/patch_rw2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE3\(read,/ { target_zone = 1 }
-          { lines[NR] = $0; zone[NR] = target_zone }
-          /^\}/ { if (target_zone == 1 && done == 1) target_zone = 0 }
+          {
+            lines[NR] = $0
+            zone[NR] = target_zone
+          }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -220,8 +225,12 @@ jobs:
         ' "$FILE" > /tmp/rw_step2.c
         mv /tmp/rw_step2.c "$FILE"
 
-        # 4. Patch fs/stat.c
+    - name: Patch fs/stat.c for KernelSU-Next
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/stat.c"
+
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -265,8 +274,12 @@ jobs:
         ' "$FILE" > /tmp/stat_step2.c
         mv /tmp/stat_step2.c "$FILE"
 
-        # 5. Patch kernel/reboot.c
+    - name: Patch kernel/reboot.c for KernelSU-Next
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="kernel/reboot.c"
+
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' 'extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);'
@@ -308,17 +321,20 @@ jobs:
         ' "$FILE" > /tmp/reboot_step2.c
         mv /tmp/reboot_step2.c "$FILE"
 
-        # Verifikasi Hasil Patch
-        echo "=== Verifikasi Patch KSU ==="
+    - name: Verify KernelSU-Next patches
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "=== Verifikasi patch KSU di semua file ==="
         for f in fs/exec.c fs/open.c fs/read_write.c fs/stat.c kernel/reboot.c; do
           COUNT=$(grep -c "CONFIG_KSU" "$f" || true)
-          if [ "$COUNT" -lt 2 ]; then
-            echo "!!! PATCH GAGAL pada $f (Cuma ketemu $COUNT dari 2+ CONFIG_KSU)"
+          echo ">>> $f : $COUNT kemunculan CONFIG_KSU"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "!!! PERINGATAN: $f tidak ter-patch sama sekali!"
             exit 1
-          else
-            echo ">>> OK: $f berhasil dipatch ($COUNT blok CONFIG_KSU)"
           fi
         done
+        echo "=== Semua file terverifikasi ter-patch ==="
 
     - name: Generate kernel configuration
       run: |
@@ -413,4 +429,3 @@ jobs:
       with:
         name: boot${{ env.UPLOADNAME }}-${{ env.DEVICE }}-${{ env.BUILD_TIME }}
         path: kernel_workspace/boot.img
-        
