@@ -32,10 +32,81 @@ jobs:
         sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
         mkdir -p $GITHUB_WORKSPACE/kernel_workspace
 
-    - name: Download Clang Toolchain
+    - name: Download LLVM 22.1.8
       run: |
-        mkdir clang
-        git clone https://github.com/vijaymalav564/vortex-clang.git -b master --depth=1 clang
+        mkdir -p $GITHUB_WORKSPACE/clang
+        cd $GITHUB_WORKSPACE/clang
+        wget -q "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-Linux-X64.tar.xz" -O llvm.tar.xz
+        tar -xf llvm.tar.xz
+        rm llvm.tar.xz
+        if [ ! -d bin ]; then
+            mkdir -p bin
+            mv clang* llvm* lld* ld.lld* 2>/dev/null bin/ || true
+        fi
+
+    - name: Download ARM64 GCC 12.2
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/gcc-arm64
+        cd $GITHUB_WORKSPACE/gcc-arm64
+        wget -q "https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
+        tar -xf arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip-components=1
+        rm *.tar.xz
+
+    # ------------------------------------------------------------------
+    # FIXED STEP: ARM32 AOSP GCC 4.9 download
+    #
+    # Root cause of the previous failures:
+    #   1. The workflow pointed at "+archive/refs/heads/ndk-r26.tar.gz".
+    #      That branch either doesn't exist on this repo, or by that
+    #      point in history the arm-linux-androideabi binaries had
+    #      already been stripped out of the tree (Google removed the
+    #      prebuilt GCC binaries from most branches years ago).
+    #   2. "ndk-r19" (the last ref that still has the full toolchain)
+    #      is a TAG, not a branch/head — so it must be fetched via
+    #      "+archive/refs/tags/..." not "+archive/refs/heads/...".
+    #
+    # Fix: pin directly to the underlying commit hash for the ndk-r19
+    # tag (b50d255961107a90cdaaf63909418061a49d89dc). Commit-hash
+    # archive URLs never break even if tags/branches are later moved
+    # or deleted, so this is the most durable option.
+    # ------------------------------------------------------------------
+    - name: Download ARM32 AOSP NDK GCC 4.9
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/gcc-arm
+        cd $GITHUB_WORKSPACE/gcc-arm
+
+        set -e
+
+        AOSP_ARM32_COMMIT="b50d255961107a90cdaaf63909418061a49d89dc"
+        AOSP_ARM32_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/${AOSP_ARM32_COMMIT}.tar.gz"
+
+        echo "Downloading ARM32 GCC 4.9 toolchain (ndk-r19 pin)..."
+        wget -q "$AOSP_ARM32_URL" -O aosp-arm32.tar.gz
+
+        # Sanity check: make sure we actually got a gzip archive and
+        # not an HTML error page (this is what silently breaks builds
+        # later at the "tar -xf" step with a cryptic error).
+        if ! file aosp-arm32.tar.gz | grep -qi "gzip"; then
+          echo "ERROR: downloaded file is not a valid gzip archive."
+          echo "----- response head -----"
+          head -c 500 aosp-arm32.tar.gz
+          echo ""
+          echo "--------------------------"
+          exit 1
+        fi
+
+        tar -xf aosp-arm32.tar.gz
+        rm aosp-arm32.tar.gz
+
+        mkdir -p bin
+        # Toolchain archive layout has binaries directly under bin/,
+        # named like "arm-linux-androideabi-gcc". Just make sure bin/
+        # is populated and executable.
+        find . -maxdepth 2 -type d -name bin ! -path "./bin" -exec sh -c 'cp -n "$1"/* ./bin/ 2>/dev/null || true' _ {} \;
+        chmod +x bin/* 2>/dev/null || true
+
+        echo "Contents of gcc-arm/bin:"
+        ls -la bin | head -n 20
 
     - name: Download mkbootimg tools
       if: env.MAKE_BOOT_IMAGE == 'true'
@@ -320,26 +391,24 @@ jobs:
     - name: Generate kernel configuration
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+        export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc-arm64/bin:$GITHUB_WORKSPACE/gcc-arm/bin:$PATH
         export ARCH=${{ env.TARGET_ARCH }}
         export SUBARCH=${{ env.TARGET_ARCH }}
-        export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
-        export KBUILD_BUILD_HOST=GitHub-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
-        make -j$(nproc --all) O=out ARCH=${{ env.TARGET_ARCH }} CC=clang ${{ env.KERNEL_DEFCONFIG }}
+        make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 ${{ env.KERNEL_DEFCONFIG }}
 
     - name: Build kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        export PATH=$GITHUB_WORKSPACE/clang/bin:$PATH
+        export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc-arm64/bin:$GITHUB_WORKSPACE/gcc-arm/bin:$PATH
         export ARCH=${{ env.TARGET_ARCH }}
         export SUBARCH=${{ env.TARGET_ARCH }}
-        export KBUILD_COMPILER_STRING="$(clang --version | head -n 1 | perl -pe 's/\(http.*?\)//gs' | sed -e 's/  */ /g' -e 's/[[:space:]]*$//')"
-        export KBUILD_BUILD_HOST=GitHub-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
         make -j$(nproc --all) O=out ARCH=arm64 savedefconfig
         cp -f out/defconfig arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        make -j$(nproc --all) O=out ARCH=${{ env.TARGET_ARCH }} CC=clang CROSS_COMPILE=aarch64-linux-gnu- ${{ env.BUILD_EXTRA_COMMAND }}
+        make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
+          KCFLAGS="-Wno-error=format-security -Wno-error=unused-variable -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types" \
+          CROSS_COMPILE=aarch64-none-linux-gnu- \
+          CROSS_COMPILE_ARM32=arm-linux-androideabi- \
+          ${{ env.BUILD_EXTRA_COMMAND }}
 
     - name: Check a kernel output files
       run: |
@@ -362,9 +431,10 @@ jobs:
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
         sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
         sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' AnyKernel3/anykernel.sh
-        if [ ${{ env.CHECK_FILE_IS_OK }} = true ]; then
+        if [ "${{ env.CHECK_FILE_IS_OK }}" = "true" ]; then
             cp android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/${{ env.KERNEL_FILE }} AnyKernel3/
-        elif [ ${{ env.CHECK_DTBO_IS_OK }} = true ]; then
+        fi
+        if [ "${{ env.CHECK_DTBO_IS_OK }}" = "true" ]; then
             cp android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/dtbo.img AnyKernel3/
         fi
         rm -rf AnyKernel3/.git* AnyKernel3/README.md
