@@ -269,23 +269,15 @@ jobs:
     - name: Build kernel
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        
-        # 1. Set Path Clang
         export PATH=$GITHUB_WORKSPACE/kernel_workspace/clang/bin:$PATH
-        export KBUILD_BUILD_HOST=Github-Action
-        export KBUILD_BUILD_USER=$(echo ${{ github.actor }} | tr A-Z a-z)
 
-        # 2. Set Env KernelSU jika ada
-        if [ -n "${{ env.KSU_EXPECTED_SIZE }}" ] && [ -n "${{ env.KSU_EXPECTED_HASH }}" ]; then
-          export KSU_EXPECTED_SIZE=${{ env.KSU_EXPECTED_SIZE }}
-          export KSU_EXPECTED_HASH=${{ env.KSU_EXPECTED_HASH }}
-        fi
+        # Netralkan variabel boolean yang suka bikin bocor string 'true'
+        unset DISABLE_LTO DISABLE_CC_WERROR USE_GCC USE_GCC_64 USE_GCC_32
 
-        # 3. Generate Defconfig
+        # Jalankan make
         make -j$(nproc --all) O=out ARCH=${{ env.KERNEL_ARCH }} CC=clang ${{ env.EXTRA_CMDS }} ${DEVICE}_defconfig
-
-        # 4. Kompilasi Kernel Utama (Langsung panggil CC=clang)
         make -j$(nproc --all) O=out ARCH=${{ env.KERNEL_ARCH }} CC=clang ${{ env.EXTRA_CMDS }}
+        
         
     - name: Check a kernel output files
       run: |
