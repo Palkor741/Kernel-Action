@@ -1,0 +1,50 @@
+name: Test Patch Kernel Tree
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Patch Kernel Tree Structure
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Clone kernel source (shallow)
+      run: |
+        git clone https://github.com/Jbub5/android_kernel_xiaomi_mt6768.git -b kernel-tree android-kernel --depth=1
+
+    - name: Check defconfig availability
+      run: |
+        cd android-kernel
+        echo "=== Cari merlin di configs ==="
+        ls arch/arm64/configs/ | grep -i merlin
+
+    - name: Check touchscreen driver folder
+      run: |
+        cd android-kernel
+        echo "=== Cari folder NT di touchscreen ==="
+        ls drivers/input/touchscreen/ | grep -i NT
+
+    - name: Check if mtk_panel_tch_handle already exists
+      run: |
+        cd android-kernel
+        echo "=== Cek apakah mtk_panel_tch_handle_init sudah ada di nt36xxx.c ==="
+        grep -n "mtk_panel_tch_handle_init" drivers/input/touchscreen/NT36672C/nt36xxx.c || echo "TIDAK DITEMUKAN"
+
+    - name: Check ESD protect parameters
+      run: |
+        cd android-kernel
+        echo "=== Cek NVT_TOUCH_ESD_PROTECT dan CHECK_PERIOD ==="
+        grep -n "define NVT_TOUCH_ESD_PROTECT\|define NVT_TOUCH_ESD_CHECK_PERIOD" drivers/input/touchscreen/NT36672C/nt36xxx.h
+
+    - name: Check fs/exec.c structure
+      run: |
+        cd android-kernel
+        echo "=== Cek struktur do_execve di exec.c ==="
+        grep -n -A 10 "^int do_execve(struct filename" fs/exec.c
+
+    - name: Check fs/open.c structure
+      run: |
+        cd android-kernel
+        echo "=== Cek struktur SYSCALL_DEFINE3 faccessat ==="
+        grep -n -A 10 "^SYSCALL_DEFINE3(faccessat" fs/open.c
