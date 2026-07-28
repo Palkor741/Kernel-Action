@@ -48,3 +48,24 @@ jobs:
         cd android-kernel
         echo "=== Cek struktur SYSCALL_DEFINE3 faccessat ==="
         grep -n -A 10 "^SYSCALL_DEFINE3(faccessat" fs/open.c
+
+    - name: Check fs/read_write.c structure
+      run: |
+        cd android-kernel
+        echo "=== Cek struktur SYSCALL_DEFINE3 read ==="
+        grep -n -B 2 -A 8 "^SYSCALL_DEFINE3(read," fs/read_write.c
+        echo ""
+        echo "=== Cek berapa kali pola ssize_t ret = -EBADF muncul ==="
+        grep -n "ssize_t ret = -EBADF;" fs/read_write.c
+
+    - name: Check fs/stat.c structure
+      run: |
+        cd android-kernel
+        echo "=== Cek struktur SYSCALL_DEFINE4 newfstatat ==="
+        grep -n -B 2 -A 10 "^SYSCALL_DEFINE4(newfstatat," fs/stat.c
+
+    - name: Check kernel/reboot.c structure
+      run: |
+        cd android-kernel
+        echo "=== Cek struktur SYSCALL_DEFINE4 reboot ==="
+        grep -n -B 2 -A 10 "^SYSCALL_DEFINE4(reboot," kernel/reboot.c    
