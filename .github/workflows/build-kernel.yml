@@ -7,7 +7,7 @@ jobs:
   build:
     name: Build Kernel by ${{ github.actor }}
     runs-on: ubuntu-22.04
-    
+
     steps:
     - uses: actions/checkout@v3
     - name: Setup Configuration
@@ -24,6 +24,7 @@ jobs:
         echo "NEED_DTBO=$(cat config.env | grep "NEED_DTBO" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "MAKE_BOOT_IMAGE=$(cat config.env | grep "MAKE_BOOT_IMAGE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "SOURCE_BOOT_IMAGE=$(cat config.env | grep "SOURCE_BOOT_IMAGE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+
     - name: Setup build kernel environment
       run: |
         echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
@@ -37,12 +38,8 @@ jobs:
         mkdir -p $GITHUB_WORKSPACE/clang
         cd $GITHUB_WORKSPACE/clang
         wget -q "https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/LLVM-22.1.8-Linux-X64.tar.xz" -O llvm.tar.xz
-        tar -xf llvm.tar.xz
+        tar -xf llvm.tar.xz --strip-components=1
         rm llvm.tar.xz
-        if [ ! -d bin ]; then
-            mkdir -p bin
-            mv clang* llvm* lld* ld.lld* 2>/dev/null bin/ || true
-        fi
 
     - name: Download ARM64 GCC 12.2
       run: |
@@ -52,24 +49,6 @@ jobs:
         tar -xf arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip-components=1
         rm *.tar.xz
 
-    # ------------------------------------------------------------------
-    # FIXED STEP: ARM32 AOSP GCC 4.9 download
-    #
-    # Root cause of the previous failures:
-    #   1. The workflow pointed at "+archive/refs/heads/ndk-r26.tar.gz".
-    #      That branch either doesn't exist on this repo, or by that
-    #      point in history the arm-linux-androideabi binaries had
-    #      already been stripped out of the tree (Google removed the
-    #      prebuilt GCC binaries from most branches years ago).
-    #   2. "ndk-r19" (the last ref that still has the full toolchain)
-    #      is a TAG, not a branch/head — so it must be fetched via
-    #      "+archive/refs/tags/..." not "+archive/refs/heads/...".
-    #
-    # Fix: pin directly to the underlying commit hash for the ndk-r19
-    # tag (b50d255961107a90cdaaf63909418061a49d89dc). Commit-hash
-    # archive URLs never break even if tags/branches are later moved
-    # or deleted, so this is the most durable option.
-    # ------------------------------------------------------------------
     - name: Download ARM32 AOSP NDK GCC 4.9
       run: |
         mkdir -p $GITHUB_WORKSPACE/gcc-arm
@@ -82,31 +61,15 @@ jobs:
 
         echo "Downloading ARM32 GCC 4.9 toolchain (ndk-r19 pin)..."
         wget -q "$AOSP_ARM32_URL" -O aosp-arm32.tar.gz
-
-        # Sanity check: make sure we actually got a gzip archive and
-        # not an HTML error page (this is what silently breaks builds
-        # later at the "tar -xf" step with a cryptic error).
-        if ! file aosp-arm32.tar.gz | grep -qi "gzip"; then
-          echo "ERROR: downloaded file is not a valid gzip archive."
-          echo "----- response head -----"
-          head -c 500 aosp-arm32.tar.gz
-          echo ""
-          echo "--------------------------"
-          exit 1
-        fi
-
         tar -xf aosp-arm32.tar.gz
         rm aosp-arm32.tar.gz
 
-        mkdir -p bin
-        # Toolchain archive layout has binaries directly under bin/,
-        # named like "arm-linux-androideabi-gcc". Just make sure bin/
-        # is populated and executable.
-        find . -maxdepth 2 -type d -name bin ! -path "./bin" -exec sh -c 'cp -n "$1"/* ./bin/ 2>/dev/null || true' _ {} \;
-        chmod +x bin/* 2>/dev/null || true
+        # Hapus file eksekusi tanpa prefix yang bentrok dengan Toolchain Host (Ubuntu)
+        rm -f bin/as bin/ld bin/ar bin/nm bin/objcopy bin/objdump bin/strip bin/gcc bin/g++ 2>/dev/null || true
 
         echo "Contents of gcc-arm/bin:"
         ls -la bin | head -n 20
+
 
     - name: Download mkbootimg tools
       if: env.MAKE_BOOT_IMAGE == 'true'
@@ -451,7 +414,7 @@ jobs:
         else
             echo "Boot image is empty"
         fi
-    
+
     - name: Upload ${{ env.KERNEL_FILE }}
       if: env.CHECK_FILE_IS_OK == 'true'
       uses: actions/upload-artifact@v4
