@@ -47,6 +47,18 @@ jobs:
         echo "=== isi Makefile drivers/kernelsu ==="
         cat drivers/kernelsu/Makefile
 
+        echo ""
+        echo "=== cek ada file Kbuild gak (case-insensitive) ==="
+        find drivers/kernelsu -iname "Kbuild"
+
+        echo ""
+        echo "=== isi file Kbuild kalau ada ==="
+        cat drivers/kernelsu/Kbuild 2>/dev/null || echo "TIDAK ADA file Kbuild"
+
+        echo ""
+        echo "=== list SEMUA file (termasuk non .c/.h) di drivers/kernelsu top-level ==="
+        ls -la drivers/kernelsu/
+
     - name: Register kernelsu in drivers/Makefile
       if: env.USE_KERNELSU == 'true'
       run: |
