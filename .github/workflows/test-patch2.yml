@@ -47,3 +47,13 @@ jobs:
         cd android-kernel
         echo "=== Cari semua file Makefile di drivers/kernelsu ==="
         find drivers/kernelsu -name "Makefile" -exec echo "--- {} ---" \; -exec cat {} \;   
+
+    - name: Check how kernelsu is registered in drivers/Makefile
+      run: |
+        cd android-kernel
+        echo "=== Cek baris kernelsu di drivers/Makefile ==="
+        grep -n "kernelsu" drivers/Makefile
+        echo ""
+        echo "=== Cek isi obj-y kernelsu (kalau ada) di file lain ==="
+        find drivers/kernelsu -maxdepth 1 -type f -name "*.mk" -o -name "Kbuild" 2>/dev/null
+        find drivers/kernelsu -maxdepth 1    
