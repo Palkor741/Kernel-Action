@@ -5,67 +5,30 @@ on:
 
 jobs:
   test:
-    name: Test Patch Kernel Tree Structure
+    name: Diagnose KernelSU Source
     runs-on: ubuntu-22.04
 
     steps:
     - name: Clone kernel source (shallow)
       run: |
-        git clone https://github.com/Jbub5/android_kernel_xiaomi_mt6768.git -b kernel-tree android-kernel --depth=1
+        git clone https://github.com/Palkor741/Sw-kernel-base.git -b shockwave-slmk android-kernel --depth=1
 
-    - name: Check defconfig availability
+    - name: Setup KernelSU-Next source
       run: |
         cd android-kernel
-        echo "=== Cari merlin di configs ==="
-        ls arch/arm64/configs/ | grep -i merlin
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
 
-    - name: Check touchscreen driver folder
+    - name: Diagnose ksu_vfs_read_hook and ksu_input_hook
       run: |
         cd android-kernel
-        echo "=== Cari folder NT di touchscreen ==="
-        ls drivers/input/touchscreen/ | grep -i NT
-
-    - name: Check if mtk_panel_tch_handle already exists
-      run: |
-        cd android-kernel
-        echo "=== Cek apakah mtk_panel_tch_handle_init sudah ada di nt36xxx.c ==="
-        grep -n "mtk_panel_tch_handle_init" drivers/input/touchscreen/NT36672C/nt36xxx.c || echo "TIDAK DITEMUKAN"
-
-    - name: Check ESD protect parameters
-      run: |
-        cd android-kernel
-        echo "=== Cek NVT_TOUCH_ESD_PROTECT dan CHECK_PERIOD ==="
-        grep -n "define NVT_TOUCH_ESD_PROTECT\|define NVT_TOUCH_ESD_CHECK_PERIOD" drivers/input/touchscreen/NT36672C/nt36xxx.h
-
-    - name: Check fs/exec.c structure
-      run: |
-        cd android-kernel
-        echo "=== Cek struktur do_execve di exec.c ==="
-        grep -n -A 10 "^int do_execve(struct filename" fs/exec.c
-
-    - name: Check fs/open.c structure
-      run: |
-        cd android-kernel
-        echo "=== Cek struktur SYSCALL_DEFINE3 faccessat ==="
-        grep -n -A 10 "^SYSCALL_DEFINE3(faccessat" fs/open.c
-
-    - name: Check fs/read_write.c structure
-      run: |
-        cd android-kernel
-        echo "=== Cek struktur SYSCALL_DEFINE3 read ==="
-        grep -n -B 2 -A 8 "^SYSCALL_DEFINE3(read," fs/read_write.c
+        echo "=== Cari definisi ksu_vfs_read_hook di seluruh source ==="
+        grep -rn "ksu_vfs_read_hook" drivers/kernelsu/ || echo "TIDAK DITEMUKAN sama sekali"
         echo ""
-        echo "=== Cek berapa kali pola ssize_t ret = -EBADF muncul ==="
-        grep -n "ssize_t ret = -EBADF;" fs/read_write.c
-
-    - name: Check fs/stat.c structure
-      run: |
-        cd android-kernel
-        echo "=== Cek struktur SYSCALL_DEFINE4 newfstatat ==="
-        grep -n -B 2 -A 10 "^SYSCALL_DEFINE4(newfstatat," fs/stat.c
-
-    - name: Check kernel/reboot.c structure
-      run: |
-        cd android-kernel
-        echo "=== Cek struktur SYSCALL_DEFINE4 reboot ==="
-        grep -n -B 2 -A 10 "^SYSCALL_DEFINE4(reboot," kernel/reboot.c    
+        echo "=== Cari definisi ksu_input_hook di seluruh source ==="
+        grep -rn "ksu_input_hook" drivers/kernelsu/ || echo "TIDAK DITEMUKAN sama sekali"
+        echo ""
+        echo "=== Isi file selinux_hide.c ==="
+        find drivers/kernelsu -name "selinux_hide.c" -exec cat {} \;
+        echo ""
+        echo "=== Cari CONFIG terkait SUSFS/hide di Kconfig ==="
+        grep -n "SUSFS\|HIDE" drivers/kernelsu/Kconfig || echo "Tidak ada config SUSFS/HIDE"
