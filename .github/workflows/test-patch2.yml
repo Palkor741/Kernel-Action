@@ -15,7 +15,8 @@ jobs:
         echo "KERNEL_SOURCE_BRANCH=$(cat config.env | grep "KERNEL_SOURCE_BRANCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "KERNEL_DEFCONFIG=$(cat config.env | grep "KERNEL_DEFCONFIG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "TARGET_ARCH=$(cat config.env | grep "TARGET_ARCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
-
+        echo "USE_KERNELSU=$(cat config.env | grep "USE_KERNELSU" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+   
     - name: Clone kernel source
       run: |
         git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
