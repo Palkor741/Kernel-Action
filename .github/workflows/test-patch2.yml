@@ -44,3 +44,16 @@ jobs:
         echo ""
         echo "=== isi Makefile drivers/kernelsu ==="
         cat drivers/kernelsu/Makefile
+
+    - name: Register kernelsu in drivers/Makefile
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd android-kernel
+        if grep -q "kernelsu" drivers/Makefile; then
+          echo "sudah terdaftar, skip"
+        else
+          echo 'obj-$(CONFIG_KSU) += kernelsu/' >> drivers/Makefile
+          echo "berhasil ditambahkan"
+        fi
+        echo "=== isi akhir drivers/Makefile ==="
+        tail -5 drivers/Makefile
