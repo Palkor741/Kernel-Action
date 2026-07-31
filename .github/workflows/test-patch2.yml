@@ -1,59 +1,46 @@
-name: Test Patch Kernel Tree
+name: Debug KSU Hooks
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: Diagnose KernelSU Source
+  debug:
     runs-on: ubuntu-22.04
-
     steps:
-    - name: Clone kernel source (shallow)
+    - uses: actions/checkout@v3
+
+    - name: Setup Configuration
       run: |
-        git clone https://github.com/Palkor741/Sw-kernel-base.git -b shockwave-slmk android-kernel --depth=1
+        echo "KERNEL_SOURCE=$(cat config.env | grep "KERNEL_SOURCE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KERNEL_SOURCE_BRANCH=$(cat config.env | grep "KERNEL_SOURCE_BRANCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KERNEL_DEFCONFIG=$(cat config.env | grep "KERNEL_DEFCONFIG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "TARGET_ARCH=$(cat config.env | grep "TARGET_ARCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+
+    - name: Clone kernel source
+      run: |
+        git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
 
     - name: Setup KernelSU-Next source
       run: |
         cd android-kernel
         curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+        echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
-    - name: Diagnose ksu_vfs_read_hook and ksu_input_hook
+    - name: Debug hooks
       run: |
         cd android-kernel
-        echo "=== Cari definisi ksu_vfs_read_hook di seluruh source ==="
-        grep -rn "ksu_vfs_read_hook" drivers/kernelsu/ || echo "TIDAK DITEMUKAN sama sekali"
-        echo ""
-        echo "=== Cari definisi ksu_input_hook di seluruh source ==="
-        grep -rn "ksu_input_hook" drivers/kernelsu/ || echo "TIDAK DITEMUKAN sama sekali"
-        echo ""
-        echo "=== Isi file selinux_hide.c ==="
-        find drivers/kernelsu -name "selinux_hide.c" -exec cat {} \;
-        echo ""
-        echo "=== Cari CONFIG terkait SUSFS/hide di Kconfig ==="
-        grep -n "SUSFS\|HIDE" drivers/kernelsu/Kconfig || echo "Tidak ada config SUSFS/HIDE"
+        echo "=== list file drivers/kernelsu ==="
+        find drivers/kernelsu -type f \( -name "*.c" -o -name "*.h" \)
 
-    - name: Check Makefile for ksud_integration
-      run: |
-        cd android-kernel
-        echo "=== Isi drivers/kernelsu/Makefile ==="
+        echo ""
+        echo "=== cari definisi ksu_vfs_read_hook & ksu_input_hook ==="
+        grep -rn "ksu_vfs_read_hook\|ksu_input_hook" drivers/kernelsu/ || echo "TIDAK DITEMUKAN"
+
+        echo ""
+        echo "=== cek defconfig ==="
+        grep -n "CONFIG_KSU" arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+
+        echo ""
+        echo "=== isi Makefile drivers/kernelsu ==="
         cat drivers/kernelsu/Makefile
-        echo ""
-        echo "=== Cek apakah runtime/ksud_integration ada di Makefile ==="
-        grep -n "ksud_integration" drivers/kernelsu/Makefile || echo "TIDAK ADA DI MAKEFILE - INI PENYEBABNYA!" 
-
-    - name: Check all kernelsu Makefiles
-      run: |
-        cd android-kernel
-        echo "=== Cari semua file Makefile di drivers/kernelsu ==="
-        find drivers/kernelsu -name "Makefile" -exec echo "--- {} ---" \; -exec cat {} \;   
-
-    - name: Check how kernelsu is registered in drivers/Makefile
-      run: |
-        cd android-kernel
-        echo "=== Cek baris kernelsu di drivers/Makefile ==="
-        grep -n "kernelsu" drivers/Makefile
-        echo ""
-        echo "=== Cek isi obj-y kernelsu (kalau ada) di file lain ==="
-        find drivers/kernelsu -maxdepth 1 -type f -name "*.mk" -o -name "Kbuild" 2>/dev/null
-        find drivers/kernelsu -maxdepth 1    
