@@ -32,3 +32,12 @@ jobs:
         echo ""
         echo "=== Cari CONFIG terkait SUSFS/hide di Kconfig ==="
         grep -n "SUSFS\|HIDE" drivers/kernelsu/Kconfig || echo "Tidak ada config SUSFS/HIDE"
+
+    - name: Check Makefile for ksud_integration
+      run: |
+        cd android-kernel
+        echo "=== Isi drivers/kernelsu/Makefile ==="
+        cat drivers/kernelsu/Makefile
+        echo ""
+        echo "=== Cek apakah runtime/ksud_integration ada di Makefile ==="
+        grep -n "ksud_integration" drivers/kernelsu/Makefile || echo "TIDAK ADA DI MAKEFILE - INI PENYEBABNYA!"   
