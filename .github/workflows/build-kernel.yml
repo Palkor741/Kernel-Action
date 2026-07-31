@@ -17,20 +17,20 @@ jobs:
         echo "KERNEL_DEFCONFIG=$(cat config.env | grep "KERNEL_DEFCONFIG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "TARGET_ARCH=$(cat config.env | grep "TARGET_ARCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "KERNEL_FILE=$(cat config.env | grep "KERNEL_FILE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
-        echo "CLANG_VERSION=$(cat config.env | grep "CLANG_VERSION" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "BUILD_EXTRA_COMMAND=$(cat config.env | grep "EXTRA_BUILD_COMMAND" | head -n 1 | cut -d ":" -f 2)" >> $GITHUB_ENV
-        echo "DISABLE-LTO=$(cat config.env | grep "DISABLE-LTO" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "USE_KERNELSU=$(cat config.env | grep "USE_KERNELSU" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "NEED_DTBO=$(cat config.env | grep "NEED_DTBO" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "MAKE_BOOT_IMAGE=$(cat config.env | grep "MAKE_BOOT_IMAGE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "SOURCE_BOOT_IMAGE=$(cat config.env | grep "SOURCE_BOOT_IMAGE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KBUILD_BUILD_USER=$(cat config.env | grep "KBUILD_BUILD_USER" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KBUILD_BUILD_HOST=$(cat config.env | grep "KBUILD_BUILD_HOST" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
 
     - name: Setup build kernel environment
       run: |
         echo "BUILD_TIME=$(TZ=Asia/Shanghai date "+%Y%m%d%H%M")" >> $GITHUB_ENV
         echo "DEVICE=$(echo ${{ env.KERNEL_DEFCONFIG }} | sed 's!vendor/!!;s/_defconfig//;s/_user//;s/-perf//')" >> $GITHUB_ENV
         sudo apt-get update
-        sudo apt-get install git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
+        sudo apt-get install -y git ccache automake flex lzop bison gperf build-essential zip curl zlib1g-dev g++-multilib libxml2-utils bzip2 libbz2-dev libbz2-1.0 libghc-bzlib-dev squashfs-tools pngcrush schedtool dpkg-dev liblz4-tool make optipng maven libssl-dev pwgen libswitch-perl policycoreutils minicom libxml-sax-base-perl libxml-simple-perl bc libc6-dev-i386 lib32ncurses5-dev libx11-dev lib32z-dev libgl1-mesa-dev xsltproc unzip device-tree-compiler python2 python3
         mkdir -p $GITHUB_WORKSPACE/kernel_workspace
 
     - name: Download LLVM 22.1.8
@@ -53,23 +53,13 @@ jobs:
       run: |
         mkdir -p $GITHUB_WORKSPACE/gcc-arm
         cd $GITHUB_WORKSPACE/gcc-arm
-
         set -e
-
         AOSP_ARM32_COMMIT="b50d255961107a90cdaaf63909418061a49d89dc"
         AOSP_ARM32_URL="https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9/+archive/${AOSP_ARM32_COMMIT}.tar.gz"
-
-        echo "Downloading ARM32 GCC 4.9 toolchain (ndk-r19 pin)..."
         wget -q "$AOSP_ARM32_URL" -O aosp-arm32.tar.gz
         tar -xf aosp-arm32.tar.gz
         rm aosp-arm32.tar.gz
-
-        # Hapus file eksekusi tanpa prefix yang bentrok dengan Toolchain Host (Ubuntu)
         rm -f bin/as bin/ld bin/ar bin/nm bin/objcopy bin/objdump bin/strip bin/gcc bin/g++ 2>/dev/null || true
-
-        echo "Contents of gcc-arm/bin:"
-        ls -la bin | head -n 20
-
 
     - name: Download mkbootimg tools
       if: env.MAKE_BOOT_IMAGE == 'true'
@@ -97,12 +87,17 @@ jobs:
             echo "Source boot image is empty"
         fi
 
+    - name: Setup KernelSU-Next source
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s legacy
+
     - name: Patch fs/exec.c for KernelSU-Next
       if: env.USE_KERNELSU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/exec.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -110,13 +105,11 @@ jobs:
           printf '%s\n' '                              void *argv, void *envp, int *flags);'
           printf '%s\n' '#endif'
         } > /tmp/patch1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);'
           printf '%s\n' '#endif'
         } > /tmp/patch2.txt
-
         awk -v patchfile="/tmp/patch1.txt" '
           /^int do_execve\(struct filename \*filename,/ {
             while ((getline line < patchfile) > 0) print line
@@ -125,11 +118,8 @@ jobs:
           { print }
         ' "$FILE" > /tmp/exec_step1.c
         mv /tmp/exec_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch2.txt" '
-          {
-            lines[NR] = $0
-          }
+          { lines[NR] = $0 }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -151,7 +141,6 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/open.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -159,13 +148,11 @@ jobs:
           printf '%s\n' '                              int *mode, int *flags);'
           printf '%s\n' '#endif'
         } > /tmp/patch_open1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_faccessat(&dfd, &filename, &mode, NULL);'
           printf '%s\n' '#endif'
         } > /tmp/patch_open2.txt
-
         awk -v patchfile="/tmp/patch_open1.txt" '
           /^SYSCALL_DEFINE3\(faccessat,/ {
             while ((getline line < patchfile) > 0) print line
@@ -174,11 +161,8 @@ jobs:
           { print }
         ' "$FILE" > /tmp/open_step1.c
         mv /tmp/open_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_open2.txt" '
-          {
-            lines[NR] = $0
-          }
+          { lines[NR] = $0 }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -198,7 +182,6 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/read_write.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' 'extern bool ksu_vfs_read_hook __read_mostly;'
@@ -207,14 +190,12 @@ jobs:
           printf '%s\n' '                              char __user **buf_ptr, size_t *count_ptr);'
           printf '%s\n' '#endif'
         } > /tmp/patch_rw1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        if (unlikely(ksu_vfs_read_hook))'
           printf '%s\n' '                ksu_handle_sys_read(fd, &buf, &count);'
           printf '%s\n' '#endif'
         } > /tmp/patch_rw2.txt
-
         awk -v patchfile="/tmp/patch_rw1.txt" '
           /^SYSCALL_DEFINE3\(read,/ {
             while ((getline line < patchfile) > 0) print line
@@ -223,14 +204,10 @@ jobs:
           { print }
         ' "$FILE" > /tmp/rw_step1.c
         mv /tmp/rw_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_rw2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE3\(read,/ { target_zone = 1 }
-          {
-            lines[NR] = $0
-            zone[NR] = target_zone
-          }
+          { lines[NR] = $0; zone[NR] = target_zone }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -252,7 +229,6 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="fs/stat.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -260,13 +236,11 @@ jobs:
           printf '%s\n' '                              int *flags);'
           printf '%s\n' '#endif'
         } > /tmp/patch_stat1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_stat(&dfd, &filename, &flag);'
           printf '%s\n' '#endif'
         } > /tmp/patch_stat2.txt
-
         awk -v patchfile="/tmp/patch_stat1.txt" '
           /^SYSCALL_DEFINE4\(newfstatat,/ {
             while ((getline line < patchfile) > 0) print line
@@ -275,7 +249,6 @@ jobs:
           { print }
         ' "$FILE" > /tmp/stat_step1.c
         mv /tmp/stat_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_stat2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE4\(newfstatat,/ { target_zone = 1 }
@@ -301,19 +274,16 @@ jobs:
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
         FILE="kernel/reboot.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' 'extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);'
           printf '%s\n' '#endif'
         } > /tmp/patch_reboot1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);'
           printf '%s\n' '#endif'
         } > /tmp/patch_reboot2.txt
-
         awk -v patchfile="/tmp/patch_reboot1.txt" '
           /^SYSCALL_DEFINE4\(reboot,/ {
             while ((getline line < patchfile) > 0) print line
@@ -322,7 +292,6 @@ jobs:
           { print }
         ' "$FILE" > /tmp/reboot_step1.c
         mv /tmp/reboot_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_reboot2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE4\(reboot,/ { target_zone = 1 }
@@ -349,6 +318,8 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc-arm64/bin:$GITHUB_WORKSPACE/gcc-arm/bin:$PATH
         export ARCH=${{ env.TARGET_ARCH }}
         export SUBARCH=${{ env.TARGET_ARCH }}
+        export KBUILD_BUILD_USER=${{ env.KBUILD_BUILD_USER }}
+        export KBUILD_BUILD_HOST=${{ env.KBUILD_BUILD_HOST }}
         make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 ${{ env.KERNEL_DEFCONFIG }}
 
     - name: Build kernel
@@ -357,14 +328,28 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc-arm64/bin:$GITHUB_WORKSPACE/gcc-arm/bin:$PATH
         export ARCH=${{ env.TARGET_ARCH }}
         export SUBARCH=${{ env.TARGET_ARCH }}
+        export KBUILD_BUILD_USER=${{ env.KBUILD_BUILD_USER }}
+        export KBUILD_BUILD_HOST=${{ env.KBUILD_BUILD_HOST }}
         echo "CONFIG_KSU=y" >> out/.config
         echo "CONFIG_OVERLAY_FS=y" >> out/.config
         make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-          KCFLAGS="-Wno-error=format-security -Wno-error=unused-variable -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types" \
           CROSS_COMPILE=aarch64-none-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-androideabi- \
           ${{ env.BUILD_EXTRA_COMMAND }}
 
+    - name: Check a kernel output files
+      run: |
+       cd $GITHUB_WORKSPACE/kernel_workspace
+       if [ -f android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/${{ env.KERNEL_FILE }} ]; then
+           echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
+       else
+           echo "Kernel output file is empty"
+       fi
+       if [ -f android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/dtbo.img ]; then
+           echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
+       else
+           echo "DTBO image is empty"
+       fi
 
     - name: Make Anykernel3
       run: |
@@ -373,6 +358,7 @@ jobs:
         sed -i 's/do.devicecheck=1/do.devicecheck=0/g' AnyKernel3/anykernel.sh
         sed -i 's!BLOCK=/dev/block/platform/omap/omap_hsmmc.0/by-name/boot;!BLOCK=auto;!g' AnyKernel3/anykernel.sh
         sed -i 's/IS_SLOT_DEVICE=0;/IS_SLOT_DEVICE=auto;/g' AnyKernel3/anykernel.sh
+        sed -i 's/kernel.string=ExampleKernel by osm0sis @ xda-developers/kernel.string=Valcore Kernel by Palkor741/g' AnyKernel3/anykernel.sh
         if [ "${{ env.CHECK_FILE_IS_OK }}" = "true" ]; then
             cp android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/${{ env.KERNEL_FILE }} AnyKernel3/
         fi
