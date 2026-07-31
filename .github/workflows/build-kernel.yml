@@ -365,27 +365,14 @@ jobs:
         export PATH=$GITHUB_WORKSPACE/clang/bin:$GITHUB_WORKSPACE/gcc-arm64/bin:$GITHUB_WORKSPACE/gcc-arm/bin:$PATH
         export ARCH=${{ env.TARGET_ARCH }}
         export SUBARCH=${{ env.TARGET_ARCH }}
-        make -j$(nproc --all) O=out ARCH=arm64 savedefconfig
-        cp -f out/defconfig arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KSU=y" >> out/.config
+        echo "CONFIG_OVERLAY_FS=y" >> out/.config
         make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
           KCFLAGS="-Wno-error=format-security -Wno-error=unused-variable -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types" \
           CROSS_COMPILE=aarch64-none-linux-gnu- \
           CROSS_COMPILE_ARM32=arm-linux-androideabi- \
           ${{ env.BUILD_EXTRA_COMMAND }}
 
-    - name: Check a kernel output files
-      run: |
-       cd $GITHUB_WORKSPACE/kernel_workspace
-       if [ -f android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/${{ env.KERNEL_FILE }} ]; then
-           echo "CHECK_FILE_IS_OK=true" >> $GITHUB_ENV
-       else
-           echo "Kernel output file is empty"
-       fi
-       if [ -f android-kernel/out/arch/${{ env.TARGET_ARCH }}/boot/dtbo.img ]; then
-           echo "CHECK_DTBO_IS_OK=true" >> $GITHUB_ENV
-       else
-           echo "DTBO image is empty"
-       fi
 
     - name: Make Anykernel3
       run: |
