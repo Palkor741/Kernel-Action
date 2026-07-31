@@ -40,4 +40,10 @@ jobs:
         cat drivers/kernelsu/Makefile
         echo ""
         echo "=== Cek apakah runtime/ksud_integration ada di Makefile ==="
-        grep -n "ksud_integration" drivers/kernelsu/Makefile || echo "TIDAK ADA DI MAKEFILE - INI PENYEBABNYA!"   
+        grep -n "ksud_integration" drivers/kernelsu/Makefile || echo "TIDAK ADA DI MAKEFILE - INI PENYEBABNYA!" 
+
+    - name: Check all kernelsu Makefiles
+      run: |
+        cd android-kernel
+        echo "=== Cari semua file Makefile di drivers/kernelsu ==="
+        find drivers/kernelsu -name "Makefile" -exec echo "--- {} ---" \; -exec cat {} \;   
