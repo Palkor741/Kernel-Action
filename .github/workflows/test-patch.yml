@@ -25,12 +25,27 @@ jobs:
     - name: Setup SukiSU Ultra source (susfs-main)
       run: |
         cd android-kernel
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs_new
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU_SUSFS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "# CONFIG_KPROBES is not set" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+
+    - name: Debug - verify KSU integration into build system
+      run: |
+        cd android-kernel
+        echo "=== Cek Kconfig include ==="
+        grep -rn "KernelSU/Kconfig" Kconfig drivers/Kconfig fs/Kconfig 2>/dev/null || echo "!!! TIDAK ADA include Kconfig KernelSU"
+        echo ""
+        echo "=== Cek Makefile include ==="
+        grep -rn "KernelSU" Makefile drivers/Makefile fs/Makefile 2>/dev/null || echo "!!! TIDAK ADA include Makefile KernelSU"
+        echo ""
+        echo "=== Cek folder KernelSU ada gak ==="
+        ls -la KernelSU/ 2>/dev/null || echo "!!! Folder KernelSU gak ada"
+        echo ""
+        echo "=== Isi defconfig baris CONFIG_KSU ==="
+        grep "CONFIG_KSU" arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }} || echo "!!! CONFIG_KSU gak ada di defconfig"
 
     - name: Patch fs/exec.c
       run: |
