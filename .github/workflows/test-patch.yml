@@ -1,32 +1,41 @@
-name: Test Patch exec.c
+name: Test Patch KernelSU Hooks
 
 on:
   workflow_dispatch:
 
 jobs:
   test:
-    name: Test Patch fs/exec.c
+    name: Test Patch (SukiSU susfs-main)
     runs-on: ubuntu-22.04
 
     steps:
+    - uses: actions/checkout@v3
+
+    - name: Load config from config.env
+      run: |
+        echo "KERNEL_SOURCE=$(cat config.env | grep "KERNEL_SOURCE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KERNEL_SOURCE_BRANCH=$(cat config.env | grep "KERNEL_SOURCE_BRANCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "KERNEL_DEFCONFIG=$(cat config.env | grep "KERNEL_DEFCONFIG" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+        echo "TARGET_ARCH=$(cat config.env | grep "TARGET_ARCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
+
     - name: Clone kernel source (shallow)
       run: |
-        git clone https://github.com/Jbub5/android_kernel_xiaomi_mt6768-legacy.git -b lineage-20 android-kernel --depth=1
+        git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
 
-    - name: Show original fs/exec.c relevant section
+    - name: Setup SukiSU Ultra source (susfs-main)
       run: |
         cd android-kernel
-        echo "=== Baris sekitar do_execve (SEBELUM patch) ==="
-        grep -n -A 5 -B 5 "^int do_execve" fs/exec.c
-        echo ""
-        echo "=== Baris envp (SEBELUM patch) ==="
-        grep -n "struct user_arg_ptr envp" fs/exec.c
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+        echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_KSU_SUSFS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+        echo "# CONFIG_KPROBES is not set" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
 
-    - name: Patch fs/exec.c for KernelSU-Next
+    - name: Patch fs/exec.c
       run: |
         cd android-kernel
         FILE="fs/exec.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -34,13 +43,11 @@ jobs:
           printf '%s\n' '                              void *argv, void *envp, int *flags);'
           printf '%s\n' '#endif'
         } > /tmp/patch1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_execveat((int *)AT_FDCWD, &filename, &argv, &envp, 0);'
           printf '%s\n' '#endif'
         } > /tmp/patch2.txt
-
         awk -v patchfile="/tmp/patch1.txt" '
           /^int do_execve\(struct filename \*filename,/ {
             while ((getline line < patchfile) > 0) print line
@@ -49,11 +56,8 @@ jobs:
           { print }
         ' "$FILE" > /tmp/exec_step1.c
         mv /tmp/exec_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch2.txt" '
-          {
-            lines[NR] = $0
-          }
+          { lines[NR] = $0 }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -70,29 +74,20 @@ jobs:
         ' "$FILE" > /tmp/exec_step2.c
         mv /tmp/exec_step2.c "$FILE"
 
-    - name: Show patched fs/exec.c relevant section
+    - name: Verify fs/exec.c
       run: |
         cd android-kernel
-        echo "=== Hasil grep KSU (SETELAH patch) ==="
-        grep -n -B 3 -A 3 "KSU" fs/exec.c || { echo "!!! PATCH GAGAL: fs/exec.c gak ada penanda KSU sama sekali"; exit 1; }
-        COUNT=$(grep -c "CONFIG_KSU" fs/exec.c)
+        COUNT=$(grep -c "CONFIG_KSU" fs/exec.c || true)
         if [ "$COUNT" -lt 2 ]; then
-          echo "!!! PATCH TIDAK LENGKAP: cuma ketemu $COUNT dari 2 blok CONFIG_KSU di fs/exec.c"
+          echo "!!! GAGAL: fs/exec.c cuma $COUNT/2 blok CONFIG_KSU"
           exit 1
         fi
-        echo ">>> OK: fs/exec.c berhasil dipatch ($COUNT blok CONFIG_KSU)"
+        echo ">>> OK: fs/exec.c ($COUNT blok)"
 
-    - name: Show original fs/open.c relevant section
-      run: |
-        cd android-kernel
-        echo "=== Cari SYSCALL_DEFINE3 faccessat ==="
-        grep -n -B 3 -A 15 "SYSCALL_DEFINE3(faccessat" fs/open.c 
-
-    - name: Patch fs/open.c for KernelSU-Next
+    - name: Patch fs/open.c
       run: |
         cd android-kernel
         FILE="fs/open.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -100,13 +95,11 @@ jobs:
           printf '%s\n' '                              int *mode, int *flags);'
           printf '%s\n' '#endif'
         } > /tmp/patch_open1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_faccessat(&dfd, &filename, &mode, NULL);'
           printf '%s\n' '#endif'
         } > /tmp/patch_open2.txt
-
         awk -v patchfile="/tmp/patch_open1.txt" '
           /^SYSCALL_DEFINE3\(faccessat,/ {
             while ((getline line < patchfile) > 0) print line
@@ -115,11 +108,8 @@ jobs:
           { print }
         ' "$FILE" > /tmp/open_step1.c
         mv /tmp/open_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_open2.txt" '
-          {
-            lines[NR] = $0
-          }
+          { lines[NR] = $0 }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -134,29 +124,20 @@ jobs:
         ' "$FILE" > /tmp/open_step2.c
         mv /tmp/open_step2.c "$FILE"
 
-    - name: Show patched fs/open.c relevant section
+    - name: Verify fs/open.c
       run: |
         cd android-kernel
-        echo "=== Hasil grep KSU di open.c (SETELAH patch) ==="
-        grep -n -B 3 -A 3 "KSU" fs/open.c || { echo "!!! PATCH GAGAL: fs/open.c gak ada penanda KSU sama sekali"; exit 1; }
-        COUNT=$(grep -c "CONFIG_KSU" fs/open.c)
+        COUNT=$(grep -c "CONFIG_KSU" fs/open.c || true)
         if [ "$COUNT" -lt 2 ]; then
-          echo "!!! PATCH TIDAK LENGKAP: cuma ketemu $COUNT dari 2 blok CONFIG_KSU di fs/open.c"
+          echo "!!! GAGAL: fs/open.c cuma $COUNT/2 blok CONFIG_KSU"
           exit 1
         fi
-        echo ">>> OK: fs/open.c berhasil dipatch ($COUNT blok CONFIG_KSU)"
+        echo ">>> OK: fs/open.c ($COUNT blok)"
 
-    - name: Show original fs/read_write.c relevant section
-      run: |
-        cd android-kernel
-        echo "=== Cari SYSCALL_DEFINE3 read ==="
-        grep -n -B 5 -A 10 "^SYSCALL_DEFINE3(read," fs/read_write.c 
-
-    - name: Patch fs/read_write.c for KernelSU-Next
+    - name: Patch fs/read_write.c
       run: |
         cd android-kernel
         FILE="fs/read_write.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' 'extern bool ksu_vfs_read_hook __read_mostly;'
@@ -165,14 +146,12 @@ jobs:
           printf '%s\n' '                              char __user **buf_ptr, size_t *count_ptr);'
           printf '%s\n' '#endif'
         } > /tmp/patch_rw1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        if (unlikely(ksu_vfs_read_hook))'
           printf '%s\n' '                ksu_handle_sys_read(fd, &buf, &count);'
           printf '%s\n' '#endif'
         } > /tmp/patch_rw2.txt
-
         awk -v patchfile="/tmp/patch_rw1.txt" '
           /^SYSCALL_DEFINE3\(read,/ {
             while ((getline line < patchfile) > 0) print line
@@ -181,15 +160,10 @@ jobs:
           { print }
         ' "$FILE" > /tmp/rw_step1.c
         mv /tmp/rw_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_rw2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE3\(read,/ { target_zone = 1 }
-          {
-            lines[NR] = $0
-            zone[NR] = target_zone
-          }
-          /^\}/ { if (target_zone == 1 && done == 1) target_zone = 0 }
+          { lines[NR] = $0; zone[NR] = target_zone }
           END {
             for (i = 1; i <= NR; i++) {
               print lines[i]
@@ -206,29 +180,20 @@ jobs:
         ' "$FILE" > /tmp/rw_step2.c
         mv /tmp/rw_step2.c "$FILE"
 
-    - name: Show patched fs/read_write.c relevant section
+    - name: Verify fs/read_write.c
       run: |
         cd android-kernel
-        echo "=== Hasil grep KSU di read_write.c (SETELAH patch) ==="
-        grep -n -B 3 -A 5 "KSU" fs/read_write.c || { echo "!!! PATCH GAGAL: fs/read_write.c gak ada penanda KSU sama sekali"; exit 1; }
-        COUNT=$(grep -c "CONFIG_KSU" fs/read_write.c)
+        COUNT=$(grep -c "CONFIG_KSU" fs/read_write.c || true)
         if [ "$COUNT" -lt 2 ]; then
-          echo "!!! PATCH TIDAK LENGKAP: cuma ketemu $COUNT dari 2 blok CONFIG_KSU di fs/read_write.c"
+          echo "!!! GAGAL: fs/read_write.c cuma $COUNT/2 blok CONFIG_KSU"
           exit 1
         fi
-        echo ">>> OK: fs/read_write.c berhasil dipatch ($COUNT blok CONFIG_KSU)"
+        echo ">>> OK: fs/read_write.c ($COUNT blok)"
 
-    - name: Show original fs/stat.c relevant section
-      run: |
-        cd android-kernel
-        echo "=== Cari SYSCALL_DEFINE4 newfstatat ==="
-        grep -n -B 5 -A 10 "^SYSCALL_DEFINE4(newfstatat," fs/stat.c   
-
-    - name: Patch fs/stat.c for KernelSU-Next
+    - name: Patch fs/stat.c
       run: |
         cd android-kernel
         FILE="fs/stat.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '__attribute__((hot))'
@@ -236,13 +201,11 @@ jobs:
           printf '%s\n' '                              int *flags);'
           printf '%s\n' '#endif'
         } > /tmp/patch_stat1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_stat(&dfd, &filename, &flag);'
           printf '%s\n' '#endif'
         } > /tmp/patch_stat2.txt
-
         awk -v patchfile="/tmp/patch_stat1.txt" '
           /^SYSCALL_DEFINE4\(newfstatat,/ {
             while ((getline line < patchfile) > 0) print line
@@ -251,7 +214,6 @@ jobs:
           { print }
         ' "$FILE" > /tmp/stat_step1.c
         mv /tmp/stat_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_stat2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE4\(newfstatat,/ { target_zone = 1 }
@@ -272,41 +234,30 @@ jobs:
         ' "$FILE" > /tmp/stat_step2.c
         mv /tmp/stat_step2.c "$FILE"
 
-    - name: Show patched fs/stat.c relevant section
+    - name: Verify fs/stat.c
       run: |
         cd android-kernel
-        echo "=== Hasil grep KSU di stat.c (SETELAH patch) ==="
-        grep -n -B 3 -A 5 "KSU" fs/stat.c || { echo "!!! PATCH GAGAL: fs/stat.c gak ada penanda KSU sama sekali"; exit 1; }
-        COUNT=$(grep -c "CONFIG_KSU" fs/stat.c)
+        COUNT=$(grep -c "CONFIG_KSU" fs/stat.c || true)
         if [ "$COUNT" -lt 2 ]; then
-          echo "!!! PATCH TIDAK LENGKAP: cuma ketemu $COUNT dari 2 blok CONFIG_KSU di fs/stat.c"
+          echo "!!! GAGAL: fs/stat.c cuma $COUNT/2 blok CONFIG_KSU"
           exit 1
         fi
-        echo ">>> OK: fs/stat.c berhasil dipatch ($COUNT blok CONFIG_KSU)"
+        echo ">>> OK: fs/stat.c ($COUNT blok)"
 
-    - name: Show original kernel/reboot.c relevant section
-      run: |
-        cd android-kernel
-        echo "=== Cari SYSCALL_DEFINE4 reboot ==="
-        grep -n -B 5 -A 15 "^SYSCALL_DEFINE4(reboot," kernel/reboot.c   
-
-    - name: Patch kernel/reboot.c for KernelSU-Next
+    - name: Patch kernel/reboot.c
       run: |
         cd android-kernel
         FILE="kernel/reboot.c"
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' 'extern int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user **arg);'
           printf '%s\n' '#endif'
         } > /tmp/patch_reboot1.txt
-
         {
           printf '%s\n' '#ifdef CONFIG_KSU'
           printf '%s\n' '        ksu_handle_sys_reboot(magic1, magic2, cmd, &arg);'
           printf '%s\n' '#endif'
         } > /tmp/patch_reboot2.txt
-
         awk -v patchfile="/tmp/patch_reboot1.txt" '
           /^SYSCALL_DEFINE4\(reboot,/ {
             while ((getline line < patchfile) > 0) print line
@@ -315,7 +266,6 @@ jobs:
           { print }
         ' "$FILE" > /tmp/reboot_step1.c
         mv /tmp/reboot_step1.c "$FILE"
-
         awk -v patchfile="/tmp/patch_reboot2.txt" '
           BEGIN { target_zone = 0; done = 0 }
           /^SYSCALL_DEFINE4\(reboot,/ { target_zone = 1 }
@@ -336,18 +286,18 @@ jobs:
         ' "$FILE" > /tmp/reboot_step2.c
         mv /tmp/reboot_step2.c "$FILE"
 
-    - name: Show patched kernel/reboot.c relevant section
+    - name: Verify kernel/reboot.c
       run: |
         cd android-kernel
-        echo "=== Hasil grep KSU di reboot.c (SETELAH patch) ==="
-        grep -n -B 3 -A 5 "KSU" kernel/reboot.c || { echo "!!! PATCH GAGAL: kernel/reboot.c gak ada penanda KSU sama sekali"; exit 1; }
-        COUNT=$(grep -c "CONFIG_KSU" kernel/reboot.c)
+        COUNT=$(grep -c "CONFIG_KSU" kernel/reboot.c || true)
         if [ "$COUNT" -lt 2 ]; then
-          echo "!!! PATCH TIDAK LENGKAP: cuma ketemu $COUNT dari 2 blok CONFIG_KSU di kernel/reboot.c"
+          echo "!!! GAGAL: kernel/reboot.c cuma $COUNT/2 blok CONFIG_KSU"
           exit 1
         fi
-        echo ">>> OK: kernel/reboot.c berhasil dipatch ($COUNT blok CONFIG_KSU)"
+        echo ">>> OK: kernel/reboot.c ($COUNT blok)"
 
-    - name: Ringkasan akhir
+    - name: Summary
       run: |
-        echo "Semua 5 titik hook (exec.c, open.c, read_write.c, stat.c, reboot.c) berhasil dipatch dan lolos verifikasi."
+        echo "=== SEMUA PATCH BERHASIL ==="
+        echo "Source: ${{ env.KERNEL_SOURCE }} (${{ env.KERNEL_SOURCE_BRANCH }})"
+        echo "SukiSU branch: susfs-main"
