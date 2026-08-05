@@ -62,6 +62,27 @@ jobs:
         echo "=== Struktur root Kconfig kernel (5 baris pertama yang ada 'source') ==="
         grep -n "^source" Kconfig | head -20
 
+    - name: Debug - dump KSU Kconfig/Makefile for manual wiring
+      run: |
+        cd android-kernel
+        echo "=== FULL: KernelSU/kernel/Kconfig ==="
+        cat KernelSU/kernel/Kconfig 2>/dev/null || echo "!!! gak ada"
+        echo ""
+        echo "=== FULL: KernelSU/kernel/Makefile ==="
+        cat KernelSU/kernel/Makefile 2>/dev/null || echo "!!! gak ada"
+        echo ""
+        echo "=== Pattern drivers/Makefile (contoh obj-\$(CONFIG_X) += lain) ==="
+        grep -n "^obj-\$(CONFIG_" drivers/Makefile | head -15
+        echo ""
+        echo "=== Pattern drivers/Kconfig (contoh source lain) ==="
+        grep -n "^source" drivers/Kconfig | head -15
+        echo ""
+        echo "=== Cari Kconfig.ext atau Kconfig include tambahan yang dipake kernel non-standar ==="
+        find . -maxdepth 1 -iname "Kconfig*"
+        echo ""
+        echo "=== Isi akhir root Makefile (siapa tau ada area 'core-y +=' dsb) ==="
+        grep -n "core-y\|drivers-y\|core-\$(SRCARCH)" Makefile | head -10
+
     - name: Patch fs/exec.c
       run: |
         cd android-kernel
