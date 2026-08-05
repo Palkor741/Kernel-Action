@@ -12,6 +12,20 @@ jobs:
     - uses: actions/checkout@v3
 
     - name: Load config from config.env
+name: Test Patch KernelSU Hooks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test Patch (SukiSU susfs-main)
+    runs-on: ubuntu-22.04
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Load config from config.env
       run: |
         echo "KERNEL_SOURCE=$(cat config.env | grep "KERNEL_SOURCE" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
         echo "KERNEL_SOURCE_BRANCH=$(cat config.env | grep "KERNEL_SOURCE_BRANCH" | head -n 1 | cut -d "=" -f 2)" >> $GITHUB_ENV
@@ -35,17 +49,32 @@ jobs:
     - name: Debug - verify KSU integration into build system
       run: |
         cd android-kernel
-        echo "=== Cek Kconfig include ==="
-        grep -rn "KernelSU/Kconfig" Kconfig drivers/Kconfig fs/Kconfig 2>/dev/null || echo "!!! TIDAK ADA include Kconfig KernelSU"
-        echo ""
-        echo "=== Cek Makefile include ==="
-        grep -rn "KernelSU" Makefile drivers/Makefile fs/Makefile 2>/dev/null || echo "!!! TIDAK ADA include Makefile KernelSU"
-        echo ""
         echo "=== Cek folder KernelSU ada gak ==="
         ls -la KernelSU/ 2>/dev/null || echo "!!! Folder KernelSU gak ada"
         echo ""
+        echo "=== Cari SEMUA file Kconfig/Makefile yang nyebut KernelSU (whole tree) ==="
+        grep -rln "KernelSU" --include="Kconfig" --include="Makefile" . 2>/dev/null || echo "!!! TIDAK ADA file Kconfig/Makefile manapun yang nyebut KernelSU"
+        echo ""
+        echo "=== Detail baris yang nyebut KernelSU/Kconfig ==="
+        grep -rn "KernelSU/Kconfig" --include="Kconfig" . 2>/dev/null || echo "!!! TIDAK ADA baris source KernelSU/Kconfig di manapun"
+        echo ""
+        echo "=== Detail baris obj-\$(CONFIG_KSU) atau += KernelSU ==="
+        grep -rn "KernelSU" --include="Makefile" . 2>/dev/null || echo "!!! TIDAK ADA baris Makefile manapun yang nunjuk folder KernelSU"
+        echo ""
+        echo "=== Isi awal KernelSU/Kconfig (punya symbol config apa) ==="
+        head -20 KernelSU/Kconfig 2>/dev/null || echo "!!! KernelSU/Kconfig gak ada"
+        echo ""
+        echo "=== Isi awal KernelSU/Makefile ==="
+        head -20 KernelSU/Makefile 2>/dev/null || echo "!!! KernelSU/Makefile gak ada"
+        echo ""
+        echo "=== Isi KernelSU/kernel/Makefile (folder actual source .c) ==="
+        find KernelSU -maxdepth 2 -name "Makefile" -exec echo "--- {} ---" \; -exec cat {} \; 2>/dev/null
+        echo ""
         echo "=== Isi defconfig baris CONFIG_KSU ==="
         grep "CONFIG_KSU" arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }} || echo "!!! CONFIG_KSU gak ada di defconfig"
+        echo ""
+        echo "=== Struktur root Kconfig kernel (5 baris pertama yang ada 'source') ==="
+        grep -n "^source" Kconfig | head -20
 
     - name: Patch fs/exec.c
       run: |
