@@ -83,6 +83,33 @@ jobs:
         echo "=== Isi akhir root Makefile (siapa tau ada area 'core-y +=' dsb) ==="
         grep -n "core-y\|drivers-y\|core-\$(SRCARCH)" Makefile | head -10
 
+    - name: Manually wire KernelSU into Makefile and Kconfig
+      run: |
+        cd android-kernel
+
+        echo "=== Sisip KernelSU/kernel/ ke core-y di Makefile ==="
+        sed -i 's|^core-y[[:space:]]*+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/|core-y\t\t+= kernel/ certs/ mm/ fs/ ipc/ security/ crypto/ block/ KernelSU/kernel/|' Makefile
+        grep -n "core-y.*KernelSU" Makefile || { echo "!!! GAGAL sisip ke Makefile"; exit 1; }
+
+        echo ""
+        echo "=== Sisip source Kconfig KernelSU ke root Kconfig ==="
+        if ! grep -q "KernelSU/kernel/Kconfig" Kconfig; then
+          sed -i '/^source "arch\/\$SRCARCH\/Kconfig"/a source "KernelSU/kernel/Kconfig"' Kconfig
+        fi
+        grep -n "KernelSU/kernel/Kconfig" Kconfig || { echo "!!! GAGAL sisip ke Kconfig"; exit 1; }
+
+        echo ""
+        echo ">>> OK: KernelSU udah nempel manual ke Makefile & Kconfig"
+
+    - name: Re-verify wiring after manual patch
+      run: |
+        cd android-kernel
+        echo "=== core-y di Makefile sekarang ==="
+        grep -n "^core-y" Makefile
+        echo ""
+        echo "=== source Kconfig sekarang (sekitar baris KernelSU) ==="
+        grep -n -B2 -A2 "KernelSU/kernel/Kconfig" Kconfig
+
     - name: Patch fs/exec.c
       run: |
         cd android-kernel
