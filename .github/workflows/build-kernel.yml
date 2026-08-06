@@ -107,6 +107,13 @@ jobs:
         echo "# CONFIG_KSU_SUSFS is not set" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "=== Sisa baris CONFIG_KSU_SUSFS di defconfig sekarang ==="
         grep "CONFIG_KSU_SUSFS" arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+
+    - name: Force disable KPM (incompatible with kernel 4.14 access_ok signature)
+      if: env.USE_KERNELSU == 'true'
+      run: |
+       cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+       sed -i '/CONFIG_KPM/d' arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+       echo "# CONFIG_KPM is not set" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}  
         
 
     - name: Disable KPROBES ifdefs in KernelSU folder (non-GKI manual requirement)
