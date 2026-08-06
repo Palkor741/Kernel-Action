@@ -49,7 +49,7 @@ jobs:
         wget -q "https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/12.2.rel1/binrel/arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz"
         tar -xf arm-gnu-toolchain-12.2.rel1-x86_64-aarch64-none-linux-gnu.tar.xz --strip-components=1
         rm *.tar.xz
-
+        
     - name: Download ARM32 AOSP NDK GCC 4.9
       run: |
         mkdir -p $GITHUB_WORKSPACE/gcc-arm
@@ -62,6 +62,7 @@ jobs:
         rm aosp-arm32.tar.gz
         rm -f bin/as bin/ld bin/ar bin/nm bin/objcopy bin/objdump bin/strip bin/gcc bin/g++ 2>/dev/null || true
 
+    
     - name: Download mkbootimg tools
       if: env.MAKE_BOOT_IMAGE == 'true'
       run: |
