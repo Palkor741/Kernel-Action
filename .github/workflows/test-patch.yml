@@ -154,6 +154,36 @@ jobs:
         echo "=== 3b. Definisi user_arg_null_ptr dan struct user_arg_ptr ==="
         grep -rn "user_arg_null_ptr\|struct user_arg_ptr" KernelSU/ include/linux/ 2>/dev/null | head -20
 
+    - name: Debug - check ksu.c includes
+      run: |
+        cd android-kernel
+        echo "=== Semua #include \"...\" lokal di ksu.c ==="
+        grep -n '#include "' KernelSU/kernel/ksu.c
+        echo ""
+        echo "=== Apakah selinux_hide.c ke-include? ==="
+        grep -n "selinux_hide" KernelSU/kernel/ksu.c || echo "!!! TIDAK di-include di ksu.c"
+        echo ""
+        echo "=== Apakah selinux/selinux.c ke-include? ==="
+        grep -n '"selinux/selinux.c"\|feature/selinux_hide.c' KernelSU/kernel/ksu.c || echo "!!! TIDAK di-include di ksu.c"
+
+    - name: Fix 1 - define fallthrough macro fallback
+      run: |
+        cd android-kernel
+        FILE="KernelSU/kernel/kernel_includes.h"
+        if ! grep -q "define fallthrough" "$FILE"; then
+          sed -i '1i #ifndef fallthrough\n#define fallthrough do {} while (0)\n#endif' "$FILE"
+        fi
+        grep -n "define fallthrough" "$FILE" || { echo "!!! GAGAL nambah fallthrough"; exit 1; }
+        echo ">>> OK: fallthrough macro fallback ditambahin"
+
+    - name: Fix 3 - dereference USER_ARG_NULL pointer bug in event.c
+      run: |
+        cd android-kernel
+        FILE="KernelSU/kernel/sulog/event.c"
+        sed -i 's/ksu_sulog_capture(KSU_SULOG_EVENT_IOCTL_GRANT_ROOT, NULL, USER_ARG_NULL, gfp)/ksu_sulog_capture(KSU_SULOG_EVENT_IOCTL_GRANT_ROOT, NULL, *USER_ARG_NULL, gfp)/' "$FILE"
+        grep -n "\*USER_ARG_NULL" "$FILE" || { echo "!!! GAGAL fix dereference"; exit 1; }
+        echo ">>> OK: USER_ARG_NULL dereference difix"
+
     - name: Patch fs/exec.c
       run: |
         cd android-kernel
