@@ -132,6 +132,18 @@ jobs:
         grep -n "KernelSU/kernel/Kconfig" Kconfig || { echo "!!! GAGAL sisip ke Kconfig"; exit 1; }
         echo ">>> OK: KernelSU nempel manual ke Makefile & Kconfig"
 
+    - name: Create stub susfs.h (SUSFS not integrated yet)
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        mkdir -p include/linux
+        if [ ! -f include/linux/susfs.h ]; then
+          touch include/linux/susfs.h
+          echo ">>> stub susfs.h dibuat"
+        else
+          echo ">>> susfs.h udah ada, skip"
+        fi
+
     - name: Patch fs/exec.c for KernelSU-Next
       if: env.USE_KERNELSU == 'true'
       run: |
