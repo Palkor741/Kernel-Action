@@ -88,24 +88,26 @@ jobs:
             echo "Source boot image is empty"
         fi
 
-    - name: Setup SukiSU Ultra source
+    - name: Setup SukiSU Ultra source (builtin)
       if: env.USE_KERNELSU == 'true'
       run: |
         cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs_new
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_SUS_MOUNT=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_SUS_KSTAT=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_TRY_UMOUNT=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_SPOOF_UNAME=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_ENABLE_LOG=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "# CONFIG_KPROBES is not set" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+
+    - name: Disable KPROBES ifdefs in KernelSU folder (non-GKI manual requirement)
+      if: env.USE_KERNELSU == 'true'
+      run: |
+        cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
+        echo "=== File yang punya '#ifdef CONFIG_KPROBES' SEBELUM diganti ==="
+        grep -rl "^#ifdef CONFIG_KPROBES" KernelSU/ 2>/dev/null || echo "(gak ada yang ketemu)"
+        find KernelSU -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/^#ifdef CONFIG_KPROBES/#if defined(CONFIG_KPROBES) \&\& 0/' {} +
+        echo ""
+        echo "=== Verifikasi SETELAH diganti ==="
+        grep -rn "CONFIG_KPROBES) && 0" KernelSU/ 2>/dev/null | head -20 || echo "!!! gak ada baris yang keganti"
 
     - name: Manually wire KernelSU into Makefile and Kconfig
       if: env.USE_KERNELSU == 'true'
