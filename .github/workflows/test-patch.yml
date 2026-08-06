@@ -184,6 +184,15 @@ jobs:
         grep -n "\*USER_ARG_NULL" "$FILE" || { echo "!!! GAGAL fix dereference"; exit 1; }
         echo ">>> OK: USER_ARG_NULL dereference difix"
 
+    - name: Debug - check selinux_hide.c ifdef guards
+      run: |
+        cd android-kernel
+        echo "=== Isi lengkap feature/selinux_hide.c ==="
+        cat -n KernelSU/kernel/feature/selinux_hide.c
+        echo ""
+        echo "=== Isi feature/selinux_hide.h ==="
+        cat -n KernelSU/kernel/feature/selinux_hide.h
+
     - name: Patch fs/exec.c
       run: |
         cd android-kernel
