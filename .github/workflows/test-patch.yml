@@ -119,6 +119,41 @@ jobs:
         echo "=== source Kconfig sekarang (sekitar baris KernelSU) ==="
         grep -n -B2 -A2 "KernelSU/kernel/Kconfig" Kconfig
 
+    - name: Create stub susfs.h (SUSFS not integrated yet)
+      run: |
+        cd android-kernel
+        mkdir -p include/linux
+        if [ ! -f include/linux/susfs.h ]; then
+          touch include/linux/susfs.h
+          echo ">>> stub susfs.h dibuat"
+        else
+          echo ">>> susfs.h udah ada, skip"
+        fi
+
+    - name: Debug - investigate 3 new compile errors
+      run: |
+        cd android-kernel
+        echo "=== 1. Cek apakah 'fallthrough' udah didefine di kernel tree ==="
+        grep -rn "define fallthrough" include/ 2>/dev/null || echo "!!! fallthrough BELUM didefine di manapun"
+        echo ""
+        echo "=== 2. Cari definisi ksu_selinux_hide_handle_post_fs_data ==="
+        grep -rln "ksu_selinux_hide_handle_post_fs_data" KernelSU/ 2>/dev/null
+        echo ""
+        echo "=== 2b. Cari file selinux di folder KernelSU ==="
+        find KernelSU -iname "*selinux*"
+        echo ""
+        echo "=== 2c. obj-y / file .c yang ke-compile via KernelSU/kernel/Makefile ==="
+        find KernelSU/kernel -maxdepth 1 -name "*.c"
+        grep -n "obj-y\|KSU_OBJS\|\.o " KernelSU/kernel/Makefile | head -30
+        echo ""
+        echo "=== 3. Isi sekitar event.c:285-295 dan :370-382 ==="
+        sed -n '285,295p' KernelSU/kernel/sulog/event.c
+        echo "---"
+        sed -n '370,382p' KernelSU/kernel/sulog/event.c
+        echo ""
+        echo "=== 3b. Definisi user_arg_null_ptr dan struct user_arg_ptr ==="
+        grep -rn "user_arg_null_ptr\|struct user_arg_ptr" KernelSU/ include/linux/ 2>/dev/null | head -20
+
     - name: Patch fs/exec.c
       run: |
         cd android-kernel
