@@ -22,15 +22,24 @@ jobs:
       run: |
         git clone ${{ env.KERNEL_SOURCE }} -b ${{ env.KERNEL_SOURCE_BRANCH }} android-kernel --depth=1
 
-    - name: Setup SukiSU Ultra source (susfs-main)
+    - name: Setup SukiSU Ultra source (builtin)
       run: |
         cd android-kernel
-        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+        curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s builtin
         echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
-        echo "CONFIG_KSU_SUSFS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
         echo "# CONFIG_KPROBES is not set" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
+
+    - name: Disable KPROBES ifdefs in KernelSU folder (non-GKI manual requirement)
+      run: |
+        cd android-kernel
+        echo "=== File yang punya '#ifdef CONFIG_KPROBES' SEBELUM diganti ==="
+        grep -rl "^#ifdef CONFIG_KPROBES" KernelSU/ 2>/dev/null || echo "(gak ada yang ketemu)"
+        find KernelSU -type f \( -name "*.c" -o -name "*.h" \) -exec sed -i 's/^#ifdef CONFIG_KPROBES/#if defined(CONFIG_KPROBES) \&\& 0/' {} +
+        echo ""
+        echo "=== Verifikasi SETELAH diganti ==="
+        grep -rn "CONFIG_KPROBES) && 0" KernelSU/ 2>/dev/null | head -20 || echo "!!! gak ada baris yang keganti - cek pattern aslinya beda?"
 
     - name: Debug - verify KSU integration into build system
       run: |
