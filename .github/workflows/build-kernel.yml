@@ -86,7 +86,7 @@ jobs:
         if: env.USE_KERNELSU == 'true'
         run: |
           cd $GITHUB_WORKSPACE/kernel_workspace/android-kernel
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v3.2.0-legacy
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s v3.4.2
           echo "CONFIG_KSU=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
           echo "CONFIG_KSU_MANUAL_HOOK=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
           echo "CONFIG_OVERLAY_FS=y" >> arch/${{ env.TARGET_ARCH }}/configs/${{ env.KERNEL_DEFCONFIG }}
@@ -316,8 +316,13 @@ jobs:
           export SUBARCH=${{ env.TARGET_ARCH }}
           export KBUILD_BUILD_USER=${{ env.KBUILD_BUILD_USER }}
           export KBUILD_BUILD_HOST=${{ env.KBUILD_BUILD_HOST }}
-          echo "CONFIG_KSU=y" >> out/.config
-          echo "CONFIG_OVERLAY_FS=y" >> out/.config
+          if [ "${{ env.USE_KERNELSU }}" = "true" ]; then
+            echo "CONFIG_KSU=y" >> out/.config
+            echo "CONFIG_KSU_MANUAL_HOOK=y" >> out/.config
+            echo "CONFIG_OVERLAY_FS=y" >> out/.config
+            echo "# CONFIG_KPROBES is not set" >> out/.config
+            make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 olddefconfig
+          fi
           make -j$(nproc --all) O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 \
             CROSS_COMPILE=aarch64-none-linux-gnu- \
             CROSS_COMPILE_ARM32=arm-none-linux-gnueabihf- \
