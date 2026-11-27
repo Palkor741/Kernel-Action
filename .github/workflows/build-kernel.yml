@@ -111,11 +111,18 @@ jobs:
         # Full clone (tanpa --depth) supaya version code KernelSU dihitung benar dari git history
         git clone https://github.com/KernelSU-Next/KernelSU-Next KernelSU-Next
         cd KernelSU-Next
+        echo "--- tag legacy yang ada di upstream ---"
+        git tag -l '*legacy*' | sort -V | tail -n 10
         if [ -n "$KSU_PIN" ]; then
           git checkout --detach "$KSU_PIN"
-        else
-          git rev-parse -q --verify "refs/tags/$KSU_TAG" >/dev/null || { echo "ERROR: tag $KSU_TAG tidak ada di upstream"; exit 1; }
+        elif git rev-parse -q --verify "refs/tags/$KSU_TAG" >/dev/null; then
           git checkout --detach "refs/tags/$KSU_TAG"
+        elif git rev-parse -q --verify "refs/remotes/origin/legacy" >/dev/null; then
+          echo "WARNING: tag $KSU_TAG tidak ada di upstream. MODE DISCOVERY: pakai HEAD branch legacy. WAJIB di-pin ke KSU_COMMIT setelah ini."
+          git checkout --detach "refs/remotes/origin/legacy"
+        else
+          echo "ERROR: tag $KSU_TAG dan branch legacy tidak ditemukan"
+          exit 1
         fi
         KSU_SHA=$(git rev-parse HEAD)
         if [ -n "$KSU_PIN" ]; then
