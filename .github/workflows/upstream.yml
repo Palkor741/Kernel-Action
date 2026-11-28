@@ -1,1 +1,30 @@
 
+name: Upstream Linux 4.14
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_tag:
+        description: 'Tag target (contoh: v4.14.249)'
+        required: true
+        default: 'v4.14.249'
+
+jobs:
+  merge-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target kernel repo
+        run: |
+          git clone --branch eleven https://x-access-token:${{ secrets.KERNEL_REPO_TOKEN }}@github.com/Palkor741/shas-dream-oc-mt6768-a11.git kernel_repo
+          cd kernel_repo
+          git fetch --unshallow || true
+
+      - name: Fetch and merge tag
+        run: |
+          cd kernel_repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote add stable https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
+          git fetch --tags --depth=1 stable ${{ github.event.inputs.target_tag }}
+          git merge --no-edit ${{ github.event.inputs.target_tag }}
+          git push origin eleven
