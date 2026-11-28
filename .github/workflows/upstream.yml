@@ -24,6 +24,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git remote add stable https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
-          git fetch --tags --depth=1 stable ${{ github.event.inputs.target_tag }}
-          git merge --no-edit ${{ github.event.inputs.target_tag }}
+          git fetch --no-tags stable tag ${{ github.event.inputs.target_tag }}
+          git merge --no-edit --allow-unrelated-histories ${{ github.event.inputs.target_tag }}
           git push origin eleven
